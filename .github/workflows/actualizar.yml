@@ -1,0 +1,49 @@
+name: Actualizar Ciudad Hockey
+on:
+  schedule:
+    # fixture y resultados: cada 3 h de 9 a 21 (hora argentina) sáb, dom y lun
+    - cron: '0 12-23/3 * * 6,0,1'
+    # torneos + planteles: martes 23 h (hora argentina)
+    - cron: '0 2 * * 3'
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'fixture (rápido) o planteles (torneos + planillas, ~40 min)'
+        type: choice
+        options: [fixture, planteles]
+        default: fixture
+permissions:
+  contents: write
+concurrency: actualizar
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+      TZ: America/Argentina/Buenos_Aires
+      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '0 2 * * 3' && 'planteles' || 'fixture') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - name: Fixture, resultados y tablas
+        if: env.MODO == 'fixture'
+        run: node larry.mjs leer
+      - name: Torneos (de nuevo) + fixture
+        if: env.MODO == 'planteles'
+        run: node larry.mjs todo
+      - name: Planteles desde las planillas
+        if: env.MODO == 'planteles'
+        run: |
+          sudo apt-get install -y poppler-utils > /dev/null
+          node planillas.mjs todo
+      - name: Subir a Firestore
+        run: node subir.mjs
+      - name: Guardar lista de torneos si cambió
+        run: |
+          git config user.name "ciudad-hockey-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add larry_torneos.json
+          git diff --cached --quiet || (git commit -m "Torneos $(date +%F)" && git push)
