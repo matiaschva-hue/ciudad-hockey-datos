@@ -39,6 +39,8 @@ jobs:
         run: |
           sudo apt-get install -y poppler-utils > /dev/null
           node planillas.mjs todo
+      - name: Goleadores oficiales
+        run: node goleadores.mjs
       - name: Subir a Firestore
         run: node subir.mjs
       - name: Guardar lista de torneos si cambió

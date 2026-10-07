@@ -52,6 +52,20 @@ if (fs.existsSync(plFile)) {
 }
 console.log(Object.keys(jugadores).length, 'jugadores');
 
+// goleadores oficiales (pestaña "Goleadores" de LarrySport, de goleadores.mjs): reemplazan a los goles leídos de las planillas
+const golFile = new URL('goleadores.json', import.meta.url);
+if (fs.existsSync(golFile)) {
+  const nn = (x) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+  const G = JSON.parse(fs.readFileSync(golFile, 'utf8'));
+  for (const [eq, lista] of Object.entries(G)) {
+    if (!equipos[eq]) continue;
+    equipos[eq].goleadores = lista.map(({ nombre, goles, pj }) => ({ nombre, goles, pj }));
+    const porNombre = new Map(lista.map((g) => [nn(g.apellidoNombre.replace(',', ' ')), g.goles]));
+    for (const j of Object.values(jugadores)) if (j.equipo === eq) j.goles = porNombre.get(nn(j.nombre)) || 0;
+  }
+  console.log('goleadores oficiales en', Object.keys(G).length, 'equipos');
+}
+
 console.log(Object.keys(equipos).length, 'equipos,', Object.keys(partidos).length, 'partidos,', Object.keys(tablas).length, 'tablas');
 for (const [id, e] of Object.entries(equipos)) console.log('  ', id, '·', e.torneo || '(solo copa)', '·', Object.values(partidos).filter(p => p.equipo === id).length, 'partidos');
 if (SECO) process.exit(0);
