@@ -39,7 +39,8 @@ jobs:
         run: |
           sudo apt-get install -y poppler-utils > /dev/null
           node planillas.mjs todo
-      - name: Goleadores oficiales
+      - name: Goleadores oficiales (necesita los planteles para separar Caballeros A y B)
+        if: env.MODO == 'planteles'
         run: node goleadores.mjs
       - name: Subir a Firestore
         run: node subir.mjs
