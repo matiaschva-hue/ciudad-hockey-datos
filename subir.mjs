@@ -51,6 +51,26 @@ if (fs.existsSync(plFile)) {
     equipos[eq].cuerpo = st.map(s => ({ rol: ROL[s.rol] || s.rol, nombre: s.nombre.split(',').map(x => x.trim()).reverse().join(' ') }));
   }
 }
+// Menores que juegan para arriba: si un/a jugador/a figura en Quinta, Sexta o Séptima y también en una división
+// más alta de la misma rama, su división es la más baja (por edad no se puede jugar más abajo). En las de arriba
+// queda marcado/a como refuerzo de esa división. Entre Intermedia y Primera: es de donde jugó más partidos.
+{
+  const ORD = { septima: 0, sexta: 1, quinta: 2, cuarta: 3, intermedia: 4, primera: 5 };
+  const nnj = (x) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/s+/).filter(Boolean).sort().join(' ');
+  const grupos = {};
+  for (const [id, j] of Object.entries(jugadores)) { const [rama, div] = j.equipo.split('-'); if (!(div in ORD)) continue; (grupos[rama + '|' + nnj(j.nombre)] ||= []).push({ id, div }); }
+  let n = 0;
+  for (const g of Object.values(grupos)) {
+    let menor = g.filter((x) => ORD[x.div] <= 2).sort((a, b) => ORD[a.div] - ORD[b.div])[0];
+    // mayores (Intermedia / Primera): es de la división donde jugó más partidos (empate: la más baja)
+    if (!menor) { const may = g.filter((x) => ORD[x.div] >= 4); if (new Set(may.map((x) => x.div)).size < 2) continue;
+      menor = may.map((x) => ({ ...x, pj: +jugadores[x.id].pj || 0 })).sort((a, b) => b.pj - a.pj || ORD[a.div] - ORD[b.div])[0];
+      for (const x of may) if (x.div !== menor.div) { jugadores[x.id].refuerzo = menor.div; n++; }
+      continue; }
+    for (const x of g) if (ORD[x.div] > ORD[menor.div]) { jugadores[x.id].refuerzo = menor.div; n++; }
+  }
+  console.log(n, 'apariciones de menores jugando en una división más alta (marcadas como refuerzo)');
+}
 console.log(Object.keys(jugadores).length, 'jugadores');
 
 // goleadores oficiales (pestaña "Goleadores" de LarrySport, de goleadores.mjs): reemplazan a los goles leídos de las planillas
@@ -81,6 +101,7 @@ const jugFinal = Object.keys(jugadores).length ? jugadores : (prev?.jugadores ||
 const paquete = { v: 1, actualizado: new Date().toISOString(), equipos, partidos, jugadores: jugFinal, tablas };
 const json = JSON.stringify(paquete);
 console.log('paquete:', Math.round(json.length / 1024), 'KB');
+fs.writeFileSync(new URL('paquete.json', import.meta.url), json); // copia en archivo (respaldo para la web si Firestore no responde)
 await setDoc(refPaq, { json, actualizado: paquete.actualizado });
 if (process.argv.includes('--solo-paquete')) { console.log('Paquete subido.'); process.exit(0); }
 
