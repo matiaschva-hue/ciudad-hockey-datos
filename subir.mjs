@@ -1,9 +1,10 @@
 // Sube larry_data.json (lo que leyó larry.mjs) al Firestore de 3T, colecciones ccba_*.
 // Partidos con id estable (se actualizan en cada pasada); los de LarrySport que ya no existen se borran.
-// Uso: node subir.mjs [--seco]   (--seco: muestra lo que haría, sin escribir)
+// Uso: node subir.mjs [--seco] [--solo-paquete]   (--seco: muestra lo que haría, sin escribir; --solo-paquete: solo arma ccba_cache/datos)
+// La web lee UN documento (ccba_cache/datos) con todo junto: ~4 lecturas por visita en vez de ~1800 (cuota gratuita: 50.000/día).
 import fs from 'fs';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 
 const SECO = process.argv.includes('--seco');
 const data = JSON.parse(fs.readFileSync(new URL('larry_data.json', import.meta.url), 'utf8'));
@@ -70,16 +71,33 @@ console.log(Object.keys(equipos).length, 'equipos,', Object.keys(partidos).lengt
 for (const [id, e] of Object.entries(equipos)) console.log('  ', id, '·', e.torneo || '(solo copa)', '·', Object.values(partidos).filter(p => p.equipo === id).length, 'partidos');
 if (SECO) process.exit(0);
 
-const viejos = (await getDocs(collection(db, 'ccba_partidos'))).docs.filter(d => d.data().fuente === 'larry' && !partidos[d.id]).map(d => d.id);
+// Paquete anterior (1 lectura): sirve para saber qué cambió y para conservar lo que esta corrida no trae
+const refPaq = doc(db, 'ccba_cache', 'datos');
+let prev = null;
+try { const s = await getDoc(refPaq); if (s.exists()) prev = JSON.parse(s.data().json); } catch (e) { console.log('sin paquete anterior:', e.message); }
+// planteles / goleadores / cuerpo técnico: si esta corrida no los trae (modo rápido), quedan los anteriores
+for (const [id, e] of Object.entries(equipos)) { const p = prev?.equipos?.[id]; if (p) equipos[id] = { ...p, ...e }; }
+const jugFinal = Object.keys(jugadores).length ? jugadores : (prev?.jugadores || {});
+const paquete = { v: 1, actualizado: new Date().toISOString(), equipos, partidos, jugadores: jugFinal, tablas };
+const json = JSON.stringify(paquete);
+console.log('paquete:', Math.round(json.length / 1024), 'KB');
+await setDoc(refPaq, { json, actualizado: paquete.actualizado });
+if (process.argv.includes('--solo-paquete')) { console.log('Paquete subido.'); process.exit(0); }
+
+// Colecciones (para la administración y la app 3T): solo lo que cambió respecto del paquete anterior
+const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const viejos = prev ? Object.keys(prev.partidos || {}).filter((id) => prev.partidos[id].fuente === 'larry' && !partidos[id])
+  : (await getDocs(collection(db, 'ccba_partidos'))).docs.filter(d => d.data().fuente === 'larry' && !partidos[d.id]).map(d => d.id);
 const ops = [
-  ...Object.entries(equipos).map(([id, o]) => ['set', 'ccba_equipos', id, o, true]),
-  ...Object.entries(partidos).map(([id, o]) => ['set', 'ccba_partidos', id, o, false]),
-  ...Object.entries(tablas).map(([id, o]) => ['set', 'ccba_tablas', id, o, false]),
+  ...Object.entries(equipos).filter(([id, o]) => !prev || !igual(prev.equipos?.[id], o)).map(([id, o]) => ['set', 'ccba_equipos', id, o, true]),
+  ...Object.entries(partidos).filter(([id, o]) => !prev || !igual(prev.partidos?.[id], o)).map(([id, o]) => ['set', 'ccba_partidos', id, o, false]),
+  ...Object.entries(tablas).filter(([id, o]) => !prev || !igual({ ...prev.tablas?.[id], actualizada: 0 }, { ...o, actualizada: 0 })).map(([id, o]) => ['set', 'ccba_tablas', id, o, false]),
   ...viejos.map(id => ['del', 'ccba_partidos', id]),
 ];
 if (Object.keys(jugadores).length) {
-  const jViejos = (await getDocs(collection(db, 'ccba_jugadores'))).docs.filter(d => d.data().fuente === 'larry' && !jugadores[d.id]).map(d => d.id);
-  ops.push(...Object.entries(jugadores).map(([id, o]) => ['set', 'ccba_jugadores', id, o, false]), ...jViejos.map(id => ['del', 'ccba_jugadores', id]));
+  const jViejos = prev ? Object.keys(prev.jugadores || {}).filter((id) => !jugadores[id])
+    : (await getDocs(collection(db, 'ccba_jugadores'))).docs.filter(d => d.data().fuente === 'larry' && !jugadores[d.id]).map(d => d.id);
+  ops.push(...Object.entries(jugadores).filter(([id, o]) => !prev || !igual(prev.jugadores?.[id], o)).map(([id, o]) => ['set', 'ccba_jugadores', id, o, false]), ...jViejos.map(id => ['del', 'ccba_jugadores', id]));
 }
 for (let i = 0; i < ops.length; i += 450) {
   const b = writeBatch(db);
