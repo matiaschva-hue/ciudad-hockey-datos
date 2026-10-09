@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'fixture (rápido) o planteles (torneos + planillas, ~40 min)'
+        description: 'fixture (rápido), planteles (torneos + planillas, ~40 min) o explorar (temporadas anteriores, no sube nada)'
         type: choice
-        options: [fixture, planteles]
+        options: [fixture, planteles, explorar]
         default: fixture
 permissions:
   contents: write
@@ -46,9 +46,14 @@ jobs:
       - name: Goleadores oficiales (necesita los planteles para separar Caballeros A y B)
         if: env.MODO == 'planteles'
         run: node goleadores.mjs
+      - name: Explorar temporadas anteriores (no escribe nada)
+        if: env.MODO == 'explorar'
+        run: node historico.mjs explorar
       - name: Subir a Firestore
+        if: env.MODO != 'explorar'
         run: node subir.mjs
       - name: Guardar lista de torneos si cambió
+        if: env.MODO != 'explorar'
         run: |
           git config user.name "ciudad-hockey-bot"
           git config user.email "actions@users.noreply.github.com"
