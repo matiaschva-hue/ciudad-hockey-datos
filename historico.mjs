@@ -25,6 +25,26 @@ const browser = await puppeteer.launch({ executablePath: CHROME, headless: true,
 const pg = await browser.newPage();
 await pg.setViewport({ width: 1280, height: 1000 });
 try {
+  if (modo === 'pasos') {
+    // recorre año → Clubes → CIUDAD → rama mostrando la página después de cada paso
+    const anio = process.env.TEMPORADA || '2025';
+    const click = async (que, fn, arg) => { const r = await pg.evaluate(fn, arg); console.log(`\n>>> click ${que}:`, r); await espera(2500); };
+    await pg.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 }); await espera(2000);
+    await click('botón año', () => { const b = [...document.querySelectorAll('main button')].find(b => /^20\d\d$/.test(b.innerText.trim())); b?.click(); return b?.innerText; });
+    await click('combo temporada', () => { const d = document.querySelector('main [role=combobox]'); d?.click(); return d?.innerText; });
+    console.log('opciones:', await pg.evaluate(() => [...document.querySelectorAll('[role=option], .ms-Dropdown-item')].map(e => e.innerText.trim()).join(' | ')));
+    await click('opción ' + anio, a => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item')].find(e => e.innerText?.trim() === a); o?.click(); return !!o; }, anio);
+    await volcar(pg, 'año elegido');
+    await click('Clubes', () => { const b = [...document.querySelectorAll('main button')].find(b => b.innerText.trim() === 'Clubes'); b?.click(); return !!b; });
+    await click('combo club', () => { const d = document.querySelector('main [role=combobox]'); d?.click(); return d?.innerText; });
+    console.log('opciones con CIU:', await pg.evaluate(() => [...document.querySelectorAll('[role=option], .ms-Dropdown-item')].map(e => e.innerText.trim()).filter(t => /CIU/i.test(t)).join(' | ')));
+    await click('CIUDAD', () => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item')].find(e => e.innerText?.trim() === 'CIUDAD'); o?.click(); return !!o; });
+    await volcar(pg, 'CIUDAD elegido');
+    await click('Rama', () => { const b = [...document.querySelectorAll('main button')].find(b => /^(Rama|Femenino|Masculino)$/.test(b.innerText.trim())); b?.click(); return b?.innerText; });
+    await volcar(pg, 'panel rama');
+    await click('Masculino', () => { const e = [...document.querySelectorAll('main *')].filter(e => e.children.length === 0 && e.innerText?.trim() === 'Masculino'); const o = e.at(-1); o?.click(); return e.length; });
+    await volcar(pg, 'Masculino elegido');
+  }
   if (modo === 'explorar') {
     await pg.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
     await espera(3000);

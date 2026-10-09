@@ -49,10 +49,7 @@ jobs:
       - name: Explorar temporadas anteriores (no escribe nada)
         if: env.MODO == 'explorar'
         run: |
-          node historico.mjs explorar > /dev/null
-          for y in 2025 2022; do echo "=== $y"; TEMPORADA=$y node larry.mjs descubrir || true; done
-          TEMPORADA=2022 node larry.mjs leer || true
-          node -e 'const d=require("./larry_data_2022.json");for(const t of d.torneos)console.log(t.rama,t.cat,t.nombre,t.partidos.length,"partidos",t.tabla.length,"tabla",t.error||"",JSON.stringify(t.partidos.find(p=>p.gl!=null)||null))' || true
+          TEMPORADA=2025 node historico.mjs pasos
       - name: Subir a Firestore
         if: env.MODO != 'explorar'
         run: node subir.mjs
