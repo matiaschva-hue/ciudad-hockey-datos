@@ -45,7 +45,7 @@ async function links() {
 const esCiudad = n => /^CIUDAD(?: ([A-H]))?$/i.exec((n || '').trim());
 function leerPdf(url) {
   const f = fileURLToPath(new URL(url.split('/').pop(), CACHE));
-  if (!fs.existsSync(f)) execFileSync('curl', ['-s', '-f', '-o', f, url]);
+  if (!fs.existsSync(f)) execFileSync('curl', ['-s', '-f', '-L', '--retry', '3', '-o', f, url]);
   return execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', f, '-'], { encoding: 'utf8' });
 }
 // Devuelve { fecha, local, visitante, lados: { local: {jug, staff}, visitante: {...} } }

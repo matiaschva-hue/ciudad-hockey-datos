@@ -28,6 +28,8 @@ async function abrirCategoria(pg, rama, cat) {
   await hacerClick(pg, () => { const d = document.querySelector('main [role=combobox], main .ms-Dropdown'); if (!d) return false; d.click(); return true; }, null, 'combo club');
   await hacerClick(pg, () => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item, button, span')].find(e => e.innerText?.trim() === 'CIUDAD'); if (!o) return false; o.click(); return true; }, null, 'CIUDAD');
   await hacerClick(pg, porTexto, rama, rama);
+  // esperar a que aparezca la lista de categorías, si no una página lenta da "sin torneos"
+  await pg.waitForFunction(() => [...document.querySelectorAll('main *')].some(e => e.children.length === 0 && /^\S+ \(\d+\)$/.test(e.innerText?.trim() || '')), { timeout: 20000 }).catch(() => {});
   const hay = await pg.evaluate(t => [...document.querySelectorAll('main *')].some(e => e.children.length === 0 && new RegExp('^' + t + ' \\(\\d+\\)$').test(e.innerText?.trim() || '')), cat);
   if (!hay) return false;
   await hacerClick(pg, empiezaCon, cat, cat);
@@ -109,7 +111,7 @@ try {
     const data = [];
     for (const t of torneos) {
       try { const r = await leerTorneo(pg, t); data.push(r); console.log(t.rama, t.cat, t.nombre, '→', r.partidos.length, 'partidos,', r.tabla.length, 'en tabla'); }
-      catch (e) { console.log('ERROR', t.nombre, e.message); }
+      catch (e) { console.log('ERROR', t.nombre, e.message); data.push({ ...t, error: e.message, partidos: [], tabla: [] }); }
     }
     fs.writeFileSync(new URL('larry_data.json', DIR), JSON.stringify({ leido: new Date().toISOString(), torneos: data }, null, 1));
   }

@@ -3,6 +3,8 @@ on:
   schedule:
     # fixture y resultados: cada 3 h de 9 a 21 (hora argentina) sáb, dom y lun
     - cron: '0 12-23/3 * * 6,0,1'
+    # ...y la de las 21 h de sáb y dom (00 UTC del día siguiente; la del lunes 21 h la cubre la de entre semana)
+    - cron: '0 0 * * 0,1'
     # partidos entre semana: 22 h (hora argentina) de lunes a jueves
     - cron: '0 1 * * 2-5'
     # torneos + planteles: martes 23 h (hora argentina)
