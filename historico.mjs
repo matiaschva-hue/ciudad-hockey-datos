@@ -65,16 +65,23 @@ try {
     const txt = await pg.evaluate(() => document.querySelector('main').innerText);
     const L = txt.slice(txt.indexOf('Torneos') + 7).split('\n').map(s => s.replace(/[\ue000-\uf8ff]/g, '').trim()).filter(Boolean).filter(s => !/^Campeonato\b|^Proyecci[oó]n - |^- Torneos|^Torneos|^Podes buscar/.test(s));
     console.log('torneos:', L.join(' | '));
-    await click('torneo ' + L[0], t => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === t); e?.click(); return !!e; }, L[0]);
+    const T = process.env.TORNEO || 'Caballeros A';
+    await click('torneo ' + T, t => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === t); e?.click(); return !!e; }, T);
     await pg.waitForFunction(b => location.href !== b, { timeout: 15000 }, BASE).catch(() => {});
     await espera(3000);
-    await volcar(pg, 'adentro del torneo');
+    const url = pg.url().split('?')[0];
+    await volcar(pg, 'adentro de ' + T);
+    console.log('botones del fixture:', await pg.evaluate(() => [...document.querySelectorAll('main button, main [role=combobox], main [role=tab], main [role=option]')].map(b => (b.innerText || b.title || b.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ')).filter(Boolean).join(' | ')));
     await click('Todas las fechas', () => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === 'Todas las fechas'); e?.click(); return !!e; });
-    console.log('--- con todas las fechas:\n' + (await pg.evaluate(() => document.querySelector('main').innerText)).slice(0, 3000));
-    for (const tab of ['Posiciones', 'Goleadores']) {
-      await click('pestaña ' + tab, t => { const b = [...document.querySelectorAll('main button, main [role=tab]')].find(b => b.innerText.trim() === t); b?.click(); return !!b; }, tab);
-      console.log(`--- ${tab}:\n` + (await pg.evaluate(() => document.querySelector('main').innerText)).slice(0, 1500));
-    }
+    const todo = await pg.evaluate(() => document.querySelector('main').innerText);
+    console.log('--- con todas las fechas (' + todo.length + ' caracteres, CIUDAD aparece ' + (todo.match(/CIUDAD/g) || []).length + ' veces):\n' + todo.slice(0, 1800));
+    await click('pestaña Principal', () => { const b = [...document.querySelectorAll('main button, main [role=tab]')].find(b => b.innerText.trim() === 'Principal'); b?.click(); return !!b; });
+    console.log('--- Principal:\n' + (await pg.evaluate(() => document.querySelector('main').innerText)).slice(0, 2000));
+    // ¿el filtro de club anda adentro del torneo?
+    await pg.goto(url + '?clubId=00000009', { waitUntil: 'networkidle2', timeout: 60000 }); await espera(3000);
+    await click('Todas las fechas (con club)', () => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === 'Todas las fechas'); e?.click(); return !!e; });
+    const conClub = await pg.evaluate(() => document.querySelector('main').innerText);
+    console.log('--- con ?clubId=00000009 (' + conClub.length + ' caracteres, CIUDAD ' + (conClub.match(/CIUDAD/g) || []).length + ' veces):\n' + conClub.slice(0, 1500));
   }
   if (modo === 'explorar') {
     await pg.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
