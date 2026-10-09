@@ -1,6 +1,7 @@
 // Importador LarrySport (Tournament Tracker AHBA) → datos de Ciudad Hockey.
 // Lee la web pública con un navegador, filtrada por el club CIUDAD (igual que la app de resultados de REAL).
 // Uso: node larry.mjs [descubrir|leer|todo]   → escribe larry_torneos.json / larry_data.json
+// Temporadas anteriores: TEMPORADA=2024 node larry.mjs todo → larry_torneos_2024.json / larry_data_2024.json
 import fs from 'fs';
 import puppeteer from 'puppeteer-core';
 
@@ -12,6 +13,8 @@ const RAMAS = { Femenino: 'damas', Masculino: 'caballeros' };
 const DIR = new URL('.', import.meta.url);
 const espera = ms => new Promise(r => setTimeout(r, ms));
 const modo = process.argv[2] || 'todo';
+const TEMPORADA = process.env.TEMPORADA || '';
+const sufijo = TEMPORADA ? '_' + TEMPORADA : '';
 
 async function hacerClick(pg, fn, arg, que) {
   for (let i = 0; i < 20; i++) { if (await pg.evaluate(fn, arg)) { await espera(1200); return true; } await espera(700); }
@@ -24,12 +27,21 @@ const empiezaCon = t => { const e = [...document.querySelectorAll('main *')].fin
 // Deja la página en: 2026 > CIUDAD > rama > categoría (lista de torneos)
 async function abrirCategoria(pg, rama, cat) {
   await pg.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
+  if (TEMPORADA) {
+    // el botón con el año abre el desplegable "Temporada"
+    await hacerClick(pg, () => { const b = [...document.querySelectorAll('main button')].find(b => /^20\d\d$/.test(b.innerText.trim())); if (!b) return false; b.click(); return true; }, null, 'botón de temporada');
+    await hacerClick(pg, () => { const d = document.querySelector('main [role=combobox]'); if (!d) return false; d.click(); return true; }, null, 'combo temporada');
+    await hacerClick(pg, a => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item')].find(e => e.innerText?.trim() === a); if (!o) return false; o.click(); return true; }, TEMPORADA, 'temporada ' + TEMPORADA);
+    const ok = await pg.evaluate(a => [...document.querySelectorAll('main button')].some(b => b.innerText.trim() === a), TEMPORADA);
+    if (!ok) throw new Error('No quedó elegida la temporada ' + TEMPORADA);
+  }
   await hacerClick(pg, () => { const b = [...document.querySelectorAll('main button')].find(b => b.innerText.trim() === 'Clubes'); if (!b) return false; b.click(); return true; }, null, 'Clubes');
   await hacerClick(pg, () => { const d = document.querySelector('main [role=combobox], main .ms-Dropdown'); if (!d) return false; d.click(); return true; }, null, 'combo club');
   await hacerClick(pg, () => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item, button, span')].find(e => e.innerText?.trim() === 'CIUDAD'); if (!o) return false; o.click(); return true; }, null, 'CIUDAD');
   await hacerClick(pg, porTexto, rama, rama);
   // esperar a que aparezca la lista de categorías, si no una página lenta da "sin torneos"
   await pg.waitForFunction(() => [...document.querySelectorAll('main *')].some(e => e.children.length === 0 && /^\S+ \(\d+\)$/.test(e.innerText?.trim() || '')), { timeout: 20000 }).catch(() => {});
+  if (process.env.DEBUG || TEMPORADA) console.log('   categorías de Ciudad en', rama, TEMPORADA || '', '→', (await pg.evaluate(() => [...document.querySelectorAll('main *')].filter(e => e.children.length === 0 && /^\S+ \((\d+|Sin torneos)\)$/.test(e.innerText?.trim() || '')).map(e => e.innerText.trim()))).join(' · '));
   const hay = await pg.evaluate(t => [...document.querySelectorAll('main *')].some(e => e.children.length === 0 && new RegExp('^' + t + ' \\(\\d+\\)$').test(e.innerText?.trim() || '')), cat);
   if (!hay) return false;
   await hacerClick(pg, empiezaCon, cat, cat);
@@ -55,7 +67,7 @@ async function descubrir(pg) {
       console.log('   ', n, '→', pg.url());
     }
   }
-  fs.writeFileSync(new URL('larry_torneos.json', DIR), JSON.stringify(out, null, 1));
+  fs.writeFileSync(new URL(`larry_torneos${sufijo}.json`, DIR), JSON.stringify(out, null, 1));
   return out;
 }
 
@@ -71,7 +83,7 @@ async function leerTorneo(pg, t) {
   await pg.evaluate(() => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === 'Todas las fechas'); e?.click(); });
   await espera(2500);
   const L = (await pg.evaluate(() => document.querySelector('main').innerText)).split('\n').map(limpia).filter(Boolean);
-  const anio = new Date().getFullYear(), partidos = [];
+  const anio = +TEMPORADA || new Date().getFullYear(), partidos = [];
   let fechaN = '', ronda = '';
   for (let i = 0; i < L.length; i++) {
     if (/^Fecha \d+$/.test(L[i])) { fechaN = L[i]; continue; }
@@ -106,13 +118,13 @@ const browser = await puppeteer.launch({ executablePath: CHROME, headless: true,
 const pg = await browser.newPage();
 await pg.setViewport({ width: 1280, height: 1000 });
 try {
-  let torneos = modo === 'leer' ? JSON.parse(fs.readFileSync(new URL('larry_torneos.json', DIR), 'utf8')) : await descubrir(pg);
+  let torneos = modo === 'leer' ? JSON.parse(fs.readFileSync(new URL(`larry_torneos${sufijo}.json`, DIR), 'utf8')) : await descubrir(pg);
   if (modo !== 'descubrir') {
     const data = [];
     for (const t of torneos) {
       try { const r = await leerTorneo(pg, t); data.push(r); console.log(t.rama, t.cat, t.nombre, '→', r.partidos.length, 'partidos,', r.tabla.length, 'en tabla'); }
       catch (e) { console.log('ERROR', t.nombre, e.message); data.push({ ...t, error: e.message, partidos: [], tabla: [] }); }
     }
-    fs.writeFileSync(new URL('larry_data.json', DIR), JSON.stringify({ leido: new Date().toISOString(), torneos: data }, null, 1));
+    fs.writeFileSync(new URL(`larry_data${sufijo}.json`, DIR), JSON.stringify({ temporada: +TEMPORADA || new Date().getFullYear(), leido: new Date().toISOString(), torneos: data }, null, 1));
   }
 } finally { await browser.close(); }
