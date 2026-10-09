@@ -22,7 +22,8 @@ on:
         default: '2025'
 permissions:
   contents: write
-concurrency: actualizar
+# cada temporada histórica en su propio grupo: no se cancelan entre sí ni frenan las corridas programadas
+concurrency: ${{ startsWith(github.event.inputs.modo, 'historico') && format('historico-{0}', github.event.inputs.temporada) || 'actualizar' }}
 jobs:
   actualizar:
     runs-on: ubuntu-latest

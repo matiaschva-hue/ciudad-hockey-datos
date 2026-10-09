@@ -131,8 +131,10 @@ async function subir() {
         const rival = esLocal ? p.visitante : p.local;
         if (esCiudad(rival) && tira === 'E') continue;
         eqs.add(eq);
+        // infantiles (Octava y Novena): LarrySport no carga resultados y los muestra 0-0 → sin resultado
+        const sinRes = (div === 'octava' || div === 'novena') && p.gl === 0 && p.gv === 0;
         partidos[`h${anio}-${eq}-${slug(t.nombre)}-${p.fecha}-${slug(rival)}`] = { equipo: eq, fecha: p.fecha, hora: p.hora, rival, local: esLocal, fechaN: p.fechaN || '',
-          gc: esLocal ? p.gl : p.gv, gr: esLocal ? p.gv : p.gl, torneo: t.nombre, copa, temporada: +anio, fuente: 'larry' };
+          gc: sinRes ? null : esLocal ? p.gl : p.gv, gr: sinRes ? null : esLocal ? p.gv : p.gl, torneo: t.nombre, copa, temporada: +anio, fuente: 'larry' };
         equipos[eq] ||= { rama: t.rama, div, tira, torneos: [] };
         if (!equipos[eq].torneos.includes(t.nombre)) equipos[eq].torneos.push(t.nombre);
       }
