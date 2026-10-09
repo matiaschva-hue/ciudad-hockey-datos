@@ -116,12 +116,20 @@ if (fs.existsSync(golFile)) {
       j.goles = g ? g.goles : 0;
     }
   }
-  // total personal: goles oficiales sumando todos los equipos de Ciudad de su rama (ej. 17 en la A + 1 en la B = 18)
-  const total = {};
-  for (const [eq, lista] of Object.entries(G)) for (const g of lista) { const k = eq.split('-')[0] + '|' + nn(g.apellidoNombre.replace(',', ' ')); total[k] = (total[k] || 0) + g.goles; }
+  // goles por división y tira (de mayor a menor división) y el total personal, sumando todos los equipos de Ciudad de su rama
+  // ej. golesDetalle: [{ equipo: 'caballeros-sexta-a', div: 'sexta', tira: 'A', goles: 7, pj: 17 }, { ...septima-a 17 }, { ...septima-b 6 }] · golesTotal: 30
+  const ORDEN = ['primera', 'intermedia', 'segunda', 'cuarta', 'quinta', 'sexta', 'septima'];
+  const detalle = {};
+  for (const [eq, lista] of Object.entries(G)) for (const g of lista) {
+    const [rama, div, tira] = eq.split('-');
+    (detalle[rama + '|' + nn(g.apellidoNombre.replace(',', ' '))] ||= []).push({ equipo: eq, div, tira: tira.toUpperCase(), goles: g.goles, pj: g.pj });
+  }
+  for (const d of Object.values(detalle)) d.sort((a, b) => ORDEN.indexOf(a.div) - ORDEN.indexOf(b.div) || a.tira.localeCompare(b.tira));
   for (const j of Object.values(jugadores)) {
-    const g = Object.entries(G).filter(([eq]) => eq.split('-')[0] === j.equipo.split('-')[0]).flatMap(([, l]) => l).find((g) => mismoNombre(j.nombre, g.apellidoNombre));
-    j.golesTotal = g ? total[j.equipo.split('-')[0] + '|' + nn(g.apellidoNombre.replace(',', ' '))] : 0;
+    const rama = j.equipo.split('-')[0];
+    const g = Object.entries(G).filter(([eq]) => eq.split('-')[0] === rama).flatMap(([, l]) => l).find((g) => mismoNombre(j.nombre, g.apellidoNombre));
+    j.golesDetalle = g ? detalle[rama + '|' + nn(g.apellidoNombre.replace(',', ' '))] : [];
+    j.golesTotal = j.golesDetalle.reduce((s, x) => s + x.goles, 0);
     // la planilla corta los nombres largos ("Carranza Centeno Maria Josefi..."): se completa con el oficial
     if (g && /\.\.\.\s*$/.test(j.nombre)) j.nombre = g.apellidoNombre.replace(/\s*,\s*/, ' ');
   }
