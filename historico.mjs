@@ -1,6 +1,8 @@
 // Temporadas anteriores de LarrySport (2022 en adelante: resultados, tablas y goleadores; no hay planillas).
-// Uso: node historico.mjs explorar   → muestra cómo es la página (selector de año) para ajustar el importador
-import puppeteer from 'puppeteer-core';
+// Uso: TEMPORADA=2025 node larry.mjs todo   (lee la temporada → larry_data_2025.json)
+//      node historico.mjs subir 2025 [--seco]   → un documento por temporada: ccba_historico/2025
+//      node historico.mjs explorar|pasos|todos   → muestra cómo es la página (para ajustar el importador)
+import fs from 'fs';
 
 const BASE = 'https://tournamenttracker.buenosaireshockey.ar/';
 const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -21,6 +23,9 @@ async function volcar(pg, titulo) {
   console.log('--- elementos con años:\n' + (await pg.evaluate(conAnios)).join('\n'));
 }
 
+if (modo === 'subir') await subir();
+else {
+const { default: puppeteer } = await import('puppeteer-core');
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--lang=es-AR'] });
 const pg = await browser.newPage();
 await pg.setViewport({ width: 1280, height: 1000 });
@@ -102,3 +107,58 @@ try {
     await volcar(pg, 'Clubes');
   }
 } finally { await browser.close(); }
+}
+
+// Arma y sube ccba_historico/<año>: { temporada, equipos, partidos, tablas, torneos } (mismo formato de partidos que ccba_cache/datos).
+// En Caballeros, A y B comparten torneo y sin planillas no se sabe de qué tira es cada goleador:
+// los goleadores quedan por torneo (torneos[].goleadores) y en el equipo solo si el torneo tiene una sola tira de Ciudad.
+async function subir() {
+  const anio = process.argv[3], SECO = process.argv.includes('--seco');
+  const data = JSON.parse(fs.readFileSync(new URL(`larry_data_${anio}.json`, import.meta.url), 'utf8'));
+  const DIV = { Primera: 'primera', Intermedia: 'intermedia', Segunda: 'segunda', Cuarta: 'cuarta', Quinta: 'quinta', Sexta: 'sexta', Septima: 'septima', Octava: 'octava', Novena: 'novena' };
+  const esCiudad = n => /^CIUDAD(?: ([A-H]))?$/i.exec((n || '').trim());
+  const slug = x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const equipos = {}, partidos = {}, tablas = {}, torneos = [];
+  for (const t of data.torneos) {
+    const div = DIV[t.cat]; if (!div || t.error) continue;
+    const copa = /copa/i.test(t.nombre), eqs = new Set();
+    for (const p of t.partidos) {
+      const cl = esCiudad(p.local), cv = esCiudad(p.visitante);
+      for (const [esLocal, c] of [[true, cl], [false, cv]]) {
+        if (!c) continue;
+        const tira = /proyecc/i.test(t.nombre) ? 'E' : (c[1] || 'A').toUpperCase();
+        const eq = `${t.rama}-${div}-${tira.toLowerCase()}`;
+        const rival = esLocal ? p.visitante : p.local;
+        if (esCiudad(rival) && tira === 'E') continue;
+        eqs.add(eq);
+        partidos[`h${anio}-${eq}-${slug(t.nombre)}-${p.fecha}-${slug(rival)}`] = { equipo: eq, fecha: p.fecha, hora: p.hora, rival, local: esLocal, fechaN: p.fechaN || '',
+          gc: esLocal ? p.gl : p.gv, gr: esLocal ? p.gv : p.gl, torneo: t.nombre, copa, temporada: +anio, fuente: 'larry' };
+        equipos[eq] ||= { rama: t.rama, div, tira, torneos: [] };
+        if (!equipos[eq].torneos.includes(t.nombre)) equipos[eq].torneos.push(t.nombre);
+      }
+    }
+    if (!eqs.size) continue; // torneo sin Ciudad
+    const tabla = t.tabla.map(f => ({ equipo: f.equipo, pj: f.pj, pg: f.pg, pe: f.pe, pp: f.pp, gf: f.gf, gc: f.gc, pts: f.pts }));
+    const goleadores = (t.goleadores || []).map(g => { const [ap, no] = g.apellidoNombre.split(',').map(x => x.trim()); return { nombre: no ? `${no} ${ap}` : ap, apellidoNombre: g.apellidoNombre, goles: g.goles, pj: g.pj }; }).sort((a, b) => b.goles - a.goles || a.pj - b.pj);
+    torneos.push({ rama: t.rama, div, nombre: t.nombre, copa, equipos: [...eqs], tabla, goleadores });
+    for (const eq of eqs) {
+      if (tabla.length && !copa) tablas[`${eq}|${t.nombre}`] = { equipo: eq, torneo: t.nombre, filas: tabla };
+      if (eqs.size === 1 && goleadores.length) (equipos[eq].goleadores ||= []).push(...goleadores.map(g => ({ ...g, torneo: t.nombre })));
+    }
+  }
+  const doc_ = { v: 1, temporada: +anio, actualizado: new Date().toISOString(), equipos, partidos, tablas, torneos };
+  const json = JSON.stringify(doc_);
+  console.log(`Temporada ${anio}: ${Object.keys(equipos).length} equipos, ${Object.keys(partidos).length} partidos, ${torneos.length} torneos con Ciudad, ${torneos.reduce((s, t) => s + t.goleadores.length, 0)} goleadores · ${Math.round(json.length / 1024)} KB`);
+  for (const [eq, e] of Object.entries(equipos).sort()) {
+    const ps = Object.values(partidos).filter(p => p.equipo === eq && p.gc != null);
+    console.log('  ', eq.padEnd(24), e.torneos.join(' + ').padEnd(50), ps.length, 'PJ', ps.filter(p => p.gc > p.gr).length, 'PG', ps.filter(p => p.gc === p.gr).length, 'PE', ps.filter(p => p.gc < p.gr).length, 'PP');
+  }
+  if (json.length > 1000000) throw new Error('El documento supera el máximo de Firestore (1 MB)');
+  if (SECO) return;
+  const { initializeApp } = await import('firebase/app');
+  const { getFirestore, doc, setDoc } = await import('firebase/firestore');
+  const db = getFirestore(initializeApp({ apiKey: 'AIzaSyB4xqW0rHESTovZqGQUIsUR07XBekqjuX0', authDomain: 'muni-hockey.firebaseapp.com', projectId: 'muni-hockey' }));
+  await setDoc(doc(db, 'ccba_historico', String(anio)), { json, actualizado: doc_.actualizado });
+  console.log('Subido ccba_historico/' + anio);
+  process.exit(0);
+}
