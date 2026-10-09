@@ -49,7 +49,7 @@ jobs:
       - name: Explorar temporadas anteriores (no escribe nada)
         if: env.MODO == 'explorar'
         run: |
-          TEMPORADA=2025 node historico.mjs pasos
+          TEMPORADA=2025 node historico.mjs todos
       - name: Subir a Firestore
         if: env.MODO != 'explorar'
         run: node subir.mjs
