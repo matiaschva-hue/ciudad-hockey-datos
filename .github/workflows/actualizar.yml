@@ -3,6 +3,8 @@ on:
   schedule:
     # fixture y resultados: cada 3 h de 9 a 21 (hora argentina) sáb, dom y lun
     - cron: '0 12-23/3 * * 6,0,1'
+    # ...y la de las 21 h de sáb y dom (00 UTC del día siguiente; la del lunes 21 h la cubre la de entre semana)
+    - cron: '0 0 * * 0,1'
     # partidos entre semana: 22 h (hora argentina) de lunes a jueves
     - cron: '0 1 * * 2-5'
     # torneos + planteles: martes 23 h (hora argentina)
@@ -10,17 +12,22 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'fixture (rápido) o planteles (torneos + planillas, ~40 min)'
+        description: 'fixture (rápido), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir) o explorar'
         type: choice
-        options: [fixture, planteles]
+        options: [fixture, planteles, historico, historico-prueba, explorar]
         default: fixture
+      temporada:
+        description: 'Temporada para historico (2022 a 2025)'
+        type: string
+        default: '2025'
 permissions:
   contents: write
-concurrency: actualizar
+# cada temporada histórica en su propio grupo: no se cancelan entre sí ni frenan las corridas programadas
+concurrency: ${{ startsWith(github.event.inputs.modo, 'historico') && format('historico-{0}', github.event.inputs.temporada) || 'actualizar' }}
 jobs:
   actualizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: ${{ startsWith(github.event.inputs.modo, 'historico') && 240 || 90 }}
     env:
       CHROME_PATH: /usr/bin/google-chrome
       TZ: America/Argentina/Buenos_Aires
@@ -44,9 +51,22 @@ jobs:
       - name: Goleadores oficiales (necesita los planteles para separar Caballeros A y B)
         if: env.MODO == 'planteles'
         run: node goleadores.mjs
+      - name: Explorar temporadas anteriores (no escribe nada)
+        if: env.MODO == 'explorar'
+        run: |
+          TEMPORADA=2025 node historico.mjs todos
+      - name: Temporada anterior desde LarrySport
+        if: startsWith(env.MODO, 'historico')
+        env:
+          TEMPORADA: ${{ github.event.inputs.temporada }}
+        run: |
+          node larry.mjs todo
+          node historico.mjs subir "$TEMPORADA" ${{ env.MODO == 'historico-prueba' && '--seco' || '' }}
       - name: Subir a Firestore
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: node subir.mjs
       - name: Guardar lista de torneos si cambió
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: |
           git config user.name "ciudad-hockey-bot"
           git config user.email "actions@users.noreply.github.com"

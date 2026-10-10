@@ -1,6 +1,7 @@
 // Importador LarrySport (Tournament Tracker AHBA) → datos de Ciudad Hockey.
 // Lee la web pública con un navegador, filtrada por el club CIUDAD (igual que la app de resultados de REAL).
 // Uso: node larry.mjs [descubrir|leer|todo]   → escribe larry_torneos.json / larry_data.json
+// Temporadas anteriores: TEMPORADA=2024 node larry.mjs todo → larry_torneos_2024.json / larry_data_2024.json
 import fs from 'fs';
 import puppeteer from 'puppeteer-core';
 
@@ -12,6 +13,8 @@ const RAMAS = { Femenino: 'damas', Masculino: 'caballeros' };
 const DIR = new URL('.', import.meta.url);
 const espera = ms => new Promise(r => setTimeout(r, ms));
 const modo = process.argv[2] || 'todo';
+const TEMPORADA = process.env.TEMPORADA || '';
+const sufijo = TEMPORADA ? '_' + TEMPORADA : '';
 
 async function hacerClick(pg, fn, arg, que) {
   for (let i = 0; i < 20; i++) { if (await pg.evaluate(fn, arg)) { await espera(1200); return true; } await espera(700); }
@@ -23,11 +26,15 @@ const empiezaCon = t => { const e = [...document.querySelectorAll('main *')].fin
 
 // Deja la página en: 2026 > CIUDAD > rama > categoría (lista de torneos)
 async function abrirCategoria(pg, rama, cat) {
+  if (TEMPORADA) return abrirCategoriaTemporada(pg, rama, cat);
   await pg.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
   await hacerClick(pg, () => { const b = [...document.querySelectorAll('main button')].find(b => b.innerText.trim() === 'Clubes'); if (!b) return false; b.click(); return true; }, null, 'Clubes');
   await hacerClick(pg, () => { const d = document.querySelector('main [role=combobox], main .ms-Dropdown'); if (!d) return false; d.click(); return true; }, null, 'combo club');
   await hacerClick(pg, () => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item, button, span')].find(e => e.innerText?.trim() === 'CIUDAD'); if (!o) return false; o.click(); return true; }, null, 'CIUDAD');
   await hacerClick(pg, porTexto, rama, rama);
+  // esperar a que aparezca la lista de categorías, si no una página lenta da "sin torneos"
+  await pg.waitForFunction(() => [...document.querySelectorAll('main *')].some(e => e.children.length === 0 && /^\S+ \(\d+\)$/.test(e.innerText?.trim() || '')), { timeout: 20000 }).catch(() => {});
+  if (process.env.DEBUG) console.log('   categorías de Ciudad en', rama, TEMPORADA || '', '→', (await pg.evaluate(() => [...document.querySelectorAll('main *')].filter(e => e.children.length === 0 && /^\S+ \((\d+|Sin torneos)\)$/.test(e.innerText?.trim() || '')).map(e => e.innerText.trim()))).join(' · '));
   const hay = await pg.evaluate(t => [...document.querySelectorAll('main *')].some(e => e.children.length === 0 && new RegExp('^' + t + ' \\(\\d+\\)$').test(e.innerText?.trim() || '')), cat);
   if (!hay) return false;
   await hacerClick(pg, empiezaCon, cat, cat);
@@ -36,9 +43,31 @@ async function abrirCategoria(pg, rama, cat) {
   return true;
 }
 
+// Temporadas anteriores: el buscador por club no trae nada, así que se entra sin club (Todos):
+// año > rama > categoría > todos los torneos. Después cada torneo se lee filtrado por Ciudad (eso sí funciona).
+const botonQue = re => { const b = [...document.querySelectorAll('main button')].find(b => new RegExp(re).test(b.innerText.trim())); if (!b) return false; b.click(); return true; };
+const radio = t => { const b = [...document.querySelectorAll('main button[role=radio]')].find(b => b.innerText.trim().split('\n')[0].trim().startsWith(t)); if (!b) return false; b.click(); return true; };
+async function abrirCategoriaTemporada(pg, rama, cat) {
+  await pg.goto(BASE, { waitUntil: 'networkidle2', timeout: 60000 });
+  await hacerClick(pg, botonQue, '^20\\d\\d$', 'botón de temporada');
+  await hacerClick(pg, () => { const d = document.querySelector('main [role=combobox]'); if (!d) return false; d.click(); return true; }, null, 'combo temporada');
+  await hacerClick(pg, a => { const o = [...document.querySelectorAll('[role=option], .ms-Dropdown-item')].find(e => e.innerText?.trim() === a); if (!o) return false; o.click(); return true; }, TEMPORADA, 'temporada ' + TEMPORADA);
+  if (!(await pg.evaluate(a => [...document.querySelectorAll('main button')].some(b => b.innerText.trim() === a), TEMPORADA))) throw new Error('No quedó elegida la temporada ' + TEMPORADA);
+  await hacerClick(pg, botonQue, '^(Rama|Femenino|Masculino)$', 'botón rama');
+  await hacerClick(pg, radio, rama, rama);
+  await hacerClick(pg, botonQue, '^Categor', 'botón categoría');
+  await pg.waitForFunction(() => document.querySelectorAll('main button[role=radio]').length > 2, { timeout: 20000 }).catch(() => {});
+  const hay = await pg.evaluate(t => [...document.querySelectorAll('main button[role=radio]')].some(b => new RegExp('^' + t + ' \\(\\d+\\)').test(b.innerText.trim())), cat);
+  if (!hay) return false;
+  await hacerClick(pg, radio, cat, cat);
+  await pg.waitForFunction(() => /Torneos\s*\n/.test(document.querySelector('main')?.innerText || ''), { timeout: 20000 }).catch(() => {});
+  await espera(1500);
+  return true;
+}
+
 async function descubrir(pg) {
   const out = [];
-  for (const rama of Object.keys(RAMAS)) for (const cat of CATS) {
+  for (const rama of Object.keys(RAMAS)) for (const cat of TEMPORADA ? [...CATS, 'Octava', 'Novena'] : CATS) {
     if (!(await abrirCategoria(pg, rama, cat))) { console.log(rama, cat, '— sin torneos'); continue; }
     const txt = await pg.evaluate(() => document.querySelector('main').innerText);
     const L = txt.slice(txt.indexOf('Torneos') + 7).split('\n').map(s => s.trim()).filter(Boolean);
@@ -53,7 +82,7 @@ async function descubrir(pg) {
       console.log('   ', n, '→', pg.url());
     }
   }
-  fs.writeFileSync(new URL('larry_torneos.json', DIR), JSON.stringify(out, null, 1));
+  fs.writeFileSync(new URL(`larry_torneos${sufijo}.json`, DIR), JSON.stringify(out, null, 1));
   return out;
 }
 
@@ -69,7 +98,7 @@ async function leerTorneo(pg, t) {
   await pg.evaluate(() => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === 'Todas las fechas'); e?.click(); });
   await espera(2500);
   const L = (await pg.evaluate(() => document.querySelector('main').innerText)).split('\n').map(limpia).filter(Boolean);
-  const anio = new Date().getFullYear(), partidos = [];
+  const anio = +TEMPORADA || new Date().getFullYear(), partidos = [];
   let fechaN = '', ronda = '';
   for (let i = 0; i < L.length; i++) {
     if (/^Fecha \d+$/.test(L[i])) { fechaN = L[i]; continue; }
@@ -97,20 +126,35 @@ async function leerTorneo(pg, t) {
     }
     if (process.env.DEBUG) console.log(P.slice(Math.max(0, h - 12), h + 24));
   }
-  return { ...t, partidos, tabla };
+  // temporadas anteriores: goleadores de Ciudad del torneo (la corrida actual los lee aparte, con goleadores.mjs)
+  let goleadores;
+  if (TEMPORADA && partidos.length) {
+    const hayTab = await pg.evaluate(() => { const b = [...document.querySelectorAll('main button, main [role=tab]')].find(b => b.innerText.trim() === 'Goleadores'); if (!b) return false; b.click(); return true; });
+    if (hayTab) {
+      await pg.waitForFunction(() => /Promedio/.test(document.querySelector('main')?.innerText || ''), { timeout: 15000 }).catch(() => {});
+      await espera(1500);
+      const G = (await pg.evaluate(() => document.querySelector('main').innerText)).split('\n').map(limpia).filter(Boolean);
+      goleadores = [];
+      for (let i = G.indexOf('Promedio') + 1; i >= 1 && i < G.length - 4; i += 6) {
+        if (!/^\d+$/.test(G[i])) break;
+        if (/^CIUDAD(?: [A-H])?$/i.test(G[i + 2])) goleadores.push({ apellidoNombre: G[i + 1], club: G[i + 2], goles: +G[i + 3], pj: +G[i + 4] });
+      }
+    }
+  }
+  return { ...t, partidos, tabla, ...(goleadores ? { goleadores } : {}) };
 }
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--lang=es-AR'] });
 const pg = await browser.newPage();
 await pg.setViewport({ width: 1280, height: 1000 });
 try {
-  let torneos = modo === 'leer' ? JSON.parse(fs.readFileSync(new URL('larry_torneos.json', DIR), 'utf8')) : await descubrir(pg);
+  let torneos = modo === 'leer' ? JSON.parse(fs.readFileSync(new URL(`larry_torneos${sufijo}.json`, DIR), 'utf8')) : await descubrir(pg);
   if (modo !== 'descubrir') {
     const data = [];
     for (const t of torneos) {
       try { const r = await leerTorneo(pg, t); data.push(r); console.log(t.rama, t.cat, t.nombre, '→', r.partidos.length, 'partidos,', r.tabla.length, 'en tabla'); }
-      catch (e) { console.log('ERROR', t.nombre, e.message); }
+      catch (e) { console.log('ERROR', t.nombre, e.message); data.push({ ...t, error: e.message, partidos: [], tabla: [] }); }
     }
-    fs.writeFileSync(new URL('larry_data.json', DIR), JSON.stringify({ leido: new Date().toISOString(), torneos: data }, null, 1));
+    fs.writeFileSync(new URL(`larry_data${sufijo}.json`, DIR), JSON.stringify({ temporada: +TEMPORADA || new Date().getFullYear(), leido: new Date().toISOString(), torneos: data }, null, 1));
   }
 } finally { await browser.close(); }
