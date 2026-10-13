@@ -46,7 +46,8 @@ const esCiudad = n => /^CIUDAD(?: ([A-H]))?$/i.exec((n || '').trim());
 function leerPdf(url) {
   const f = fileURLToPath(new URL(url.split('/').pop(), CACHE));
   if (!fs.existsSync(f)) execFileSync('curl', ['-s', '-f', '-L', '--retry', '3', '-o', f, url]);
-  return execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', f, '-'], { encoding: 'utf8' });
+  // algunas planillas vienen con los acentos codificados dos veces ("SofÃ­a"): se reparan
+  return execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', f, '-'], { encoding: 'utf8' }).replace(/[\u00c2-\u00c3][\u0080-\u00bf]/g, (m) => Buffer.from(m, 'latin1').toString('utf8'));
 }
 // Devuelve { fecha, local, visitante, lados: { local: {jug, staff}, visitante: {...} } }
 function parsear(txt) {
@@ -61,9 +62,9 @@ function parsear(txt) {
   for (const l of L.slice(iHead + 1)) {
     if (/^\s*Arbitros|Juez de mesa|Observaciones/.test(l)) break;
     for (const [lado, s] of [['local', l.slice(0, cut)], ['visitante', l.slice(cut)]]) {
-      let m = /^\s*(\d{1,3})\s+(\(C\)\s+)?([A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]+?)(?:\s{2,}|\s+\d{5,}|\s*$)(?:\d{5,}\s+([\d-])\s)?/.exec(s);
+      let m = /^\s*(\d{1,3})\s+(\(C\)\s+)?([\p{L}' .-]+?)(?:\s{2,}|\s+\d{5,}|\s*$)(?:\d{5,}\s+([\d-])\s)?/u.exec(s);
       if (m) { lados[lado].jug.push({ numero: m[1], nombre: m[3].trim(), capitan: !!m[2], goles: m[4] && m[4] !== '-' ? +m[4] : 0 }); continue; }
-      m = /^\s*([TAPM])\s+([^,]+,\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]+?)\s*$/.exec(s.trimStart().replace(/\s{2,}.*$/, ''));
+      m = /^\s*([TAPM])\s+([^,]+,\s*[\p{L}' .-]+?)\s*$/u.exec(s.trimStart().replace(/\s{2,}.*$/, ''));
       if (m) lados[lado].staff.push({ rol: m[1], nombre: m[2].trim() });
     }
   }

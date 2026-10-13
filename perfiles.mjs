@@ -68,19 +68,20 @@ export function armarPerfiles(actual, historicos, anioActual) {
   return out.sort((a, b) => b.goles - a.goles || a.nombre.localeCompare(b.nombre));
 }
 
-// Con la tabla de edades: cada temporada en una división de menores acota el año de nacimiento.
-// Se toma la división más baja de cada año (los menores pueden jugar para arriba, no para abajo).
+// Con la tabla de edades se acota el año de nacimiento. Se puede jugar para arriba pero no para abajo:
+//  - cualquier aparición en una división de menores → nació en (año - edad máxima) o después;
+//  - en una temporada con planillas (plantel completo), la división más baja de Quinta/Sexta → nació en (año - edad mínima) o antes.
+//    Séptima no cuenta para esto: puede ser alguien de Octava (que no se sigue) jugando para arriba.
 export function estimarNacimiento(temporadas, edades = EDADES) {
   if (!edades) return null;
   let desde = -Infinity, hasta = Infinity;
-  for (const anio of new Set(temporadas.map((t) => t.anio))) {
-    const divs = temporadas.filter((t) => t.anio === anio && edades[t.div]).map((t) => t.div);
-    if (!divs.length) continue;
-    const baja = divs.sort((a, b) => ORDEN.indexOf(a) - ORDEN.indexOf(b))[0];
-    const [min, max] = edades[baja];
-    desde = Math.max(desde, anio - max); hasta = Math.min(hasta, anio - min);
+  for (const t of temporadas) if (edades[t.div]) desde = Math.max(desde, t.anio - edades[t.div][1]);
+  for (const anio of new Set(temporadas.filter((t) => t.fuente === 'planilla').map((t) => t.anio))) {
+    const divs = temporadas.filter((t) => t.anio === anio && edades[t.div]).map((t) => t.div).sort((a, b) => ORDEN.indexOf(a) - ORDEN.indexOf(b));
+    if (divs[0] && divs[0] !== 'septima') hasta = Math.min(hasta, anio - edades[divs[0]][0]);
   }
-  if (!isFinite(desde) || !isFinite(hasta) || desde > hasta) return null;
+  if (!isFinite(desde)) return null;
+  if (!isFinite(hasta) || hasta < desde) return { desde };
   return desde === hasta ? { anio: desde } : { desde, hasta };
 }
 

@@ -42,11 +42,11 @@ try {
     if (url) {
       execFileSync('curl', ['-s', '-f', '-L', '-o', '/tmp/planilla.pdf', url]);
       const txt = execFileSync('pdftotext', ['-layout', '-enc', 'UTF-8', '/tmp/planilla.pdf', '-'], { encoding: 'utf8' });
-      const ROT = /Equipo|Local|Visitante|Carnet|Nac|Fecha|Edad|DNI|Doc|Gol|Tarj|Arbitr|Juez|Capit|Firma|Torneo|Categ|Divisi|Observ|N°|Nro|Jugador|Apellido|Nombre/i;
-      // los renglones con rótulos se muestran tal cual pero sin datos: solo palabras de los rótulos; el resto, enmascarado
+      // solo se muestran rótulos de esta lista fija (nunca texto de la planilla que pueda ser un nombre)
+      const ROT = ['Fecha:', 'Comp. - Categoria - Division:', 'Equipo local', 'Equipo visitante', 'Goles', 'Local', 'Visitante', 'Carnet', 'Arbitros', 'Juez de mesa', 'Observaciones', 'Nacimiento', 'Fecha de nacimiento', 'Edad', 'DNI'];
       for (const l of txt.split('\n').slice(0, 70)) {
         if (!l.trim()) continue;
-        const rotulos = l.split(/\s{2,}/).filter(w => ROT.test(w) && !/\d{3,}/.test(w)).join(' | ');
+        const rotulos = l.split(/\s{2,}/).map(w => w.trim()).filter(w => ROT.includes(w)).join(' | ');
         console.log((rotulos ? '[rótulos] ' + rotulos + '   ' : '') + '[forma] ' + l.replace(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, 'x').replace(/\d/g, '9').slice(0, 160));
       }
     }
