@@ -30,6 +30,27 @@ const browser = await puppeteer.launch({ executablePath: CHROME, headless: true,
 const pg = await browser.newPage();
 await pg.setViewport({ width: 1280, height: 1000 });
 try {
+  if (modo === 'planilla') {
+    // ¿qué columnas trae una planilla? Imprime solo la estructura: letras → x, dígitos → 9 (el repo es público)
+    const { execFileSync } = await import('child_process');
+    const t = JSON.parse(fs.readFileSync(new URL('larry_torneos.json', import.meta.url), 'utf8')).find(t => !/copa/i.test(t.nombre));
+    await pg.goto(t.url + '?clubId=00000009', { waitUntil: 'networkidle2', timeout: 60000 }); await espera(3000);
+    await pg.evaluate(() => { const e = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && e.innerText?.trim() === 'Todas las fechas'); e?.click(); });
+    await espera(2500);
+    const url = await pg.evaluate(async () => { let u = null; window.open = x => { u = x; return null; }; document.querySelector('main button[title="Ver planilla"]:not([disabled])')?.click(); await new Promise(r => setTimeout(r, 1500)); return u; });
+    console.log('planilla de', t.rama, t.cat, t.nombre, '→', url ? 'url encontrada' : 'sin url');
+    if (url) {
+      execFileSync('curl', ['-s', '-f', '-L', '-o', '/tmp/planilla.pdf', url]);
+      const txt = execFileSync('pdftotext', ['-layout', '-enc', 'UTF-8', '/tmp/planilla.pdf', '-'], { encoding: 'utf8' });
+      const ROT = /Equipo|Local|Visitante|Carnet|Nac|Fecha|Edad|DNI|Doc|Gol|Tarj|Arbitr|Juez|Capit|Firma|Torneo|Categ|Divisi|Observ|N°|Nro|Jugador|Apellido|Nombre/i;
+      // los renglones con rótulos se muestran tal cual pero sin datos: solo palabras de los rótulos; el resto, enmascarado
+      for (const l of txt.split('\n').slice(0, 70)) {
+        if (!l.trim()) continue;
+        const rotulos = l.split(/\s{2,}/).filter(w => ROT.test(w) && !/\d{3,}/.test(w)).join(' | ');
+        console.log((rotulos ? '[rótulos] ' + rotulos + '   ' : '') + '[forma] ' + l.replace(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, 'x').replace(/\d/g, '9').slice(0, 160));
+      }
+    }
+  }
   if (modo === 'pasos') {
     // recorre año → Clubes → CIUDAD → rama mostrando la página después de cada paso
     const anio = process.env.TEMPORADA || '2025';

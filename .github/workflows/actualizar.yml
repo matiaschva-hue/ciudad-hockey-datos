@@ -54,7 +54,8 @@ jobs:
       - name: Explorar temporadas anteriores (no escribe nada)
         if: env.MODO == 'explorar'
         run: |
-          TEMPORADA=2025 node historico.mjs todos
+          sudo apt-get install -y poppler-utils > /dev/null
+          node historico.mjs planilla
       - name: Temporada anterior desde LarrySport
         if: startsWith(env.MODO, 'historico')
         env:
