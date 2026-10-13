@@ -1,14 +1,18 @@
 name: Actualizar Ciudad Hockey
 on:
   schedule:
-    # fixture y resultados: cada 3 h de 9 a 21 (hora argentina) sáb, dom y lun
-    - cron: '0 12-23/3 * * 6,0,1'
-    # ...y la de las 21 h de sáb y dom (00 UTC del día siguiente; la del lunes 21 h la cubre la de entre semana)
-    - cron: '0 0 * * 0,1'
-    # partidos entre semana: 22 h (hora argentina) de lunes a jueves
-    - cron: '0 1 * * 2-5'
-    # torneos + planteles: martes 23 h (hora argentina)
-    - cron: '0 2 * * 3'
+    # GitHub demora o saltea corridas programadas, sobre todo las de minuto 0: se usan minutos sueltos
+    # y corridas seguidas en días de partido, así aunque se pierda alguna los resultados llegan igual.
+    # sáb y dom: cada hora de 10 a 20 h (hora argentina) ...
+    - cron: '17 13-23 * * 6,0'
+    # ... y de 21 a 23 h (00-02 UTC del día siguiente)
+    - cron: '17 0-2 * * 0,1'
+    # lunes (feriados): cada 3 h de 10 a 19 h
+    - cron: '17 13-22/3 * * 1'
+    # partidos entre semana: 22:17 h de lunes a viernes
+    - cron: '17 1 * * 2-6'
+    # torneos + planteles: martes 23:43 h
+    - cron: '43 2 * * 3'
   workflow_dispatch:
     inputs:
       modo:
@@ -31,7 +35,7 @@ jobs:
     env:
       CHROME_PATH: /usr/bin/google-chrome
       TZ: America/Argentina/Buenos_Aires
-      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '0 2 * * 3' && 'planteles' || 'fixture') }}
+      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '43 2 * * 3' && 'planteles' || 'fixture') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -86,6 +90,9 @@ jobs:
       - name: Perfiles de jugadores (temporada actual + anteriores)
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: node perfiles.mjs
+      - name: Control de datos (avisos en el resumen de la corrida)
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
+        run: node auditar.mjs
       - name: Guardar lista de torneos si cambió
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: |

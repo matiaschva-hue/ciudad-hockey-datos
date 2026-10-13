@@ -8,7 +8,8 @@ Alimenta https://ciudad-hockey.web.app (Firestore del proyecto muni-hockey, cole
 - `subir.mjs` sube todo a Firestore con ids estables y borra lo que ya no existe. Si un torneo no se pudo leer, quedan sus datos anteriores; si faltan de golpe más del 30 % de los partidos, no sube nada (cambio de temporada: correr con `FORZAR=1`).
 - `comun.mjs`: comparación de nombres (incluye los nombres cortados con "..." de las planillas) y reparto de goleadores A/B.
 
-La tarea `.github/workflows/actualizar.yml` corre sola: fixture y resultados cada 3 h de sábado a lunes; torneos y planteles los martes.
+La tarea `.github/workflows/actualizar.yml` corre sola: fixture y resultados cada hora sábados y domingos (10 a 23 h), cada 3 h los lunes y a las 22 h de lunes a viernes; torneos y planteles los martes a la noche. Los horarios usan minutos sueltos porque GitHub demora o saltea las corridas programadas en punto.
+Al final de cada corrida, `auditar.mjs` controla lo publicado (partidos sin resultado, tablas que no coinciden con los partidos, goleadores que no cierran, equipos sin plantel) y deja los avisos en el resumen de la corrida en Actions.
 A mano: pestaña Actions → "Actualizar Ciudad Hockey" → Run workflow (elegir fixture / planteles).
 
 ## Temporadas anteriores (2022–2025)
