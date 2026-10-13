@@ -16,3 +16,7 @@ A mano: pestaña Actions → "Actualizar Ciudad Hockey" → Run workflow (elegir
 En LarrySport los años anteriores no se pueden buscar por club, pero adentro de cada torneo el filtro de Ciudad sí funciona. `TEMPORADA=2024 node larry.mjs todo` entra sin club, recorre todos los torneos de cada categoría (Primera a Novena), lee los de Ciudad y sus goleadores. `node historico.mjs subir 2024` guarda la temporada en `ccba_historico/2024` (un documento por año, aparte del paquete actual).
 No hay planillas: sin planteles, y en Caballeros (A y B en el mismo torneo) los goleadores quedan por torneo. En Octava y Novena LarrySport no carga resultados.
 A mano: Actions → Run workflow → modo `historico` (o `historico-prueba`, que no sube) y la temporada. Tarda 2 a 4 h.
+
+## Perfiles de jugadores
+
+`perfiles.mjs` arma `ccba_perfiles/datos`: por persona y rama, su recorrido año a año (división, tira, PJ, goles, número, capitán) juntando las planillas de la temporada actual con los goleadores oficiales de 2022–2025. Corre después de cada actualización. El año de nacimiento se estima por división (se puede jugar para arriba, no para abajo) cuando se complete la tabla `EDADES` de `perfiles.mjs`.

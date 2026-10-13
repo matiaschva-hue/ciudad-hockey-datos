@@ -66,6 +66,9 @@ jobs:
       - name: Subir a Firestore
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: node subir.mjs
+      - name: Perfiles de jugadores (temporada actual + anteriores)
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
+        run: node perfiles.mjs
       - name: Guardar lista de torneos si cambió
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: |
