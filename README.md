@@ -20,3 +20,7 @@ A mano: Actions → Run workflow → modo `historico` (o `historico-prueba`, que
 ## Perfiles de jugadores
 
 `perfiles.mjs` arma `ccba_perfiles/datos`: por persona y rama, su recorrido año a año (división, tira, PJ, goles, número, capitán) juntando las planillas de la temporada actual con los goleadores oficiales de 2022–2025. Corre después de cada actualización. El año de nacimiento se estima por división (se puede jugar para arriba, no para abajo) cuando se complete la tabla `EDADES` de `perfiles.mjs`.
+
+## Padrón: fecha de nacimiento y categoría
+
+`node padron.mjs <padron.xlsx>` lee el padrón del club (Apellido, Nombres, Fecha nacimiento, Categoria, Genero), lo cruza con las planillas y sube a `ccba_padron/datos` solo a quienes juegan: desde los 18 (o si cumple 18 en su próximo cumpleaños) la fecha de nacimiento; a menores, solo la categoría. El Excel no se guarda en ningún lado. `perfiles.mjs` lo suma a cada perfil. Conviene correrlo con cada padrón nuevo (al menos una vez por temporada). `--seco` muestra el resumen sin subir.

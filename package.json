@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "exceljs": "^4.4.0",
     "firebase": "^11.0.1",
     "puppeteer-core": "^24.0.0"
   }

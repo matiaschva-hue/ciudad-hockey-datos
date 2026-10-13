@@ -11,14 +11,14 @@ const nombreLindo = (an) => { const [ap, no] = an.split(',').map((x) => x.trim()
 // (Novena 2016–17, Octava 2014–15, Séptima 2012–13, Sexta 2010–11, Quinta 2007–09).
 export const EDADES = { novena: [9, 10], octava: [11, 12], septima: [13, 14], sexta: [15, 16], quinta: [17, 19] };
 
-export function armarPerfiles(actual, historicos, anioActual) {
+export function armarPerfiles(actual, historicos, anioActual, padron = {}) {
   const P = new Map(); // clave rama|nombre normalizado
   const buscar = (rama, nombre, apellidoNombre) => {
     const k = rama + '|' + nn((apellidoNombre || nombre).replace(',', ' '));
     if (P.has(k)) return P.get(k);
     // nombres cortados en la planilla ("Carranza Centeno Maria Josefi..."): se unen con el nombre completo
     for (const [k2, p] of P) if (k2.startsWith(rama + '|') && (mismoNombre(p.nombre, apellidoNombre || nombre) || mismoNombre(nombre, p.apellidoNombre || p.nombre))) return p;
-    const p = { rama, nombre, apellidoNombre: apellidoNombre || '', temporadas: [] };
+    const p = { rama, nombre, apellidoNombre: apellidoNombre || '', temporadas: [], claves: [] };
     P.set(k, p);
     return p;
   };
@@ -27,6 +27,7 @@ export function armarPerfiles(actual, historicos, anioActual) {
   for (const j of Object.values(actual.jugadores || {})) {
     const [rama, div, tira] = j.equipo.split('-');
     const p = buscar(rama, j.nombre);
+    p.claves.push(`${rama}|${j.nombre}`);
     if (/\.\.\.\s*$/.test(p.nombre) && !/\.\.\.\s*$/.test(j.nombre)) p.nombre = j.nombre;
     p.temporadas.push({ anio: anioActual, div, tira: tira.toUpperCase(), pj: j.pj, goles: j.goles || 0, numero: j.numero, capitan: !!j.capitan, ...(j.refuerzo ? { refuerzo: j.refuerzo } : {}), fuente: 'planilla' });
   }
@@ -63,9 +64,15 @@ export function armarPerfiles(actual, historicos, anioActual) {
     };
     // menores: se los muestra por categoría (sus temporadas), nunca con año de nacimiento.
     // Solo se publica la estimación cuando seguro tiene 18 o más (nació antes de anioActual - 18).
-    const nac = estimarNacimiento(p.temporadas);
-    const masJoven = nac && (nac.anio ?? nac.hasta ?? Infinity);
-    if (nac && masJoven <= anioActual - 18) res.nacimiento = nac;
+    // padrón del club (padron.mjs): fecha de nacimiento desde los 18; menores, solo la categoría
+    const pad = p.claves.map((k) => padron[k]).find(Boolean);
+    if (pad?.nacimiento) res.nacimiento = pad.nacimiento;
+    else if (pad?.categoria) res.categoria = pad.categoria;
+    else {
+      const nac = estimarNacimiento(p.temporadas);
+      const masJoven = nac && (nac.anio ?? nac.hasta ?? Infinity);
+      if (nac && masJoven <= anioActual - 18) res.nacimientoEstimado = nac;
+    }
     out.push(res);
   }
   return out.sort((a, b) => b.goles - a.goles || a.nombre.localeCompare(b.nombre));
@@ -98,9 +105,10 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
   const anioActual = new Date(actual.actualizado).getFullYear();
   const historicos = [];
   for (let y = anioActual - 1; y >= 2022; y--) { const h = await leer('ccba_historico', String(y)); if (h) historicos.push(h); }
-  const perfiles = armarPerfiles(actual, historicos, anioActual);
+  const padron = (await leer('ccba_padron', 'datos'))?.personas || {};
+  const perfiles = armarPerfiles(actual, historicos, anioActual, padron);
   const json = JSON.stringify({ v: 1, actualizado: new Date().toISOString(), perfiles });
-  console.log(perfiles.length, 'perfiles ·', perfiles.filter((p) => p.anios.length > 1).length, 'con más de una temporada ·', Math.round(json.length / 1024), 'KB');
+  console.log(perfiles.length, 'perfiles ·', perfiles.filter((p) => p.anios.length > 1).length, 'con más de una temporada ·', perfiles.filter((p) => p.nacimiento).length, 'con fecha de nacimiento ·', Math.round(json.length / 1024), 'KB');
   if (json.length > 1000000) throw new Error('El documento supera el máximo de Firestore (1 MB)');
   if (!SECO) { await setDoc(doc(db, 'ccba_perfiles', 'datos'), { json, actualizado: new Date().toISOString() }); console.log('Subido ccba_perfiles/datos'); }
   process.exit(0);
