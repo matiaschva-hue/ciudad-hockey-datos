@@ -7,9 +7,9 @@ import { nn, mismoNombre } from './comun.mjs';
 const ORDEN = ['novena', 'octava', 'septima', 'sexta', 'quinta', 'cuarta', 'segunda', 'intermedia', 'primera'];
 const nombreLindo = (an) => { const [ap, no] = an.split(',').map((x) => x.trim()); return no ? `${no} ${ap}` : ap; };
 
-// Edad que cumple en el año (año - nacimiento) para cada división. Sin confirmar todavía: null = no se estima.
-// Formato: { septima: [12, 13], ... } → nacimiento entre anio-13 y anio-12.
-export const EDADES = null;
+// Edad que cumple en el año (año - nacimiento) para cada división, según el padrón del club 2026
+// (Novena 2016–17, Octava 2014–15, Séptima 2012–13, Sexta 2010–11, Quinta 2007–09).
+export const EDADES = { novena: [9, 10], octava: [11, 12], septima: [13, 14], sexta: [15, 16], quinta: [17, 19] };
 
 export function armarPerfiles(actual, historicos, anioActual) {
   const P = new Map(); // clave rama|nombre normalizado
