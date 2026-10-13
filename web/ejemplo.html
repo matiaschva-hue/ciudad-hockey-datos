@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perfiles · Ciudad Hockey</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 16px; color: #1b1b1b; background: #fff; }
+  input { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; }
+  .resultados button { display: block; width: 100%; text-align: left; padding: 8px; border: 0; border-bottom: 1px solid #eee; background: none; cursor: pointer; }
+  .ficha { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 12px; }
+  .ficha h2 { margin: 0; } .num { color: #1f4e78; }
+  .sub { color: #555; margin: 4px 0 12px; }
+  .numeros { display: flex; gap: 12px; margin-bottom: 12px; }
+  .numeros div { flex: 1; background: #f3f6f9; border-radius: 6px; padding: 8px; text-align: center; }
+  .numeros b { display: block; font-size: 24px; } .numeros span { font-size: 12px; color: #555; }
+  table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #eee; }
+  .nota { font-size: 12px; color: #777; }
+  .cumples { padding-left: 18px; } .cumples li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h1>Cumpleaños de la semana</h1>
+<div id="cumples">Cargando…</div>
+<h1>Buscar jugador/a</h1>
+<input id="q" placeholder="Nombre o apellido" autocomplete="off">
+<div id="resultados" class="resultados"></div>
+<div id="ficha"></div>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+  import { getFirestore } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+  import { cargarPerfiles, buscar, fichaHTML, cumpleaniosHTML } from './perfiles.js';
+
+  // en la web real, usar la instancia de Firestore que ya existe
+  const db = getFirestore(initializeApp({ apiKey: 'AIzaSyB4xqW0rHESTovZqGQUIsUR07XBekqjuX0', authDomain: 'muni-hockey.firebaseapp.com', projectId: 'muni-hockey' }));
+  const perfiles = await cargarPerfiles(db);
+  document.getElementById('cumples').innerHTML = cumpleaniosHTML(perfiles, 7);
+
+  const q = document.getElementById('q'), res = document.getElementById('resultados'), ficha = document.getElementById('ficha');
+  q.addEventListener('input', () => {
+    res.innerHTML = '';
+    if (q.value.trim().length < 3) return;
+    for (const p of buscar(perfiles, q.value).slice(0, 10)) {
+      const b = document.createElement('button');
+      b.textContent = `${p.nombre} · ${p.rama === 'damas' ? 'Damas' : 'Caballeros'}`;
+      b.onclick = () => { ficha.innerHTML = fichaHTML(p); res.innerHTML = ''; };
+      res.append(b);
+    }
+  });
+</script>
+</body>
+</html>

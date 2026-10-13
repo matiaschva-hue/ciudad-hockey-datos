@@ -5,6 +5,7 @@
 import fs from 'fs';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { nn, mismoNombre } from './comun.mjs';
 
 const SECO = process.argv.includes('--seco');
 const data = JSON.parse(fs.readFileSync(new URL('larry_data.json', import.meta.url), 'utf8'));
@@ -15,6 +16,11 @@ const esCiudad = n => /^CIUDAD(?: ([A-H]))?$/i.exec((n || '').trim());
 const slug = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const hoy = new Date(); const actualizada = `${hoy.getDate()}/${hoy.getMonth() + 1}/${hoy.getFullYear()}`;
 
+// Paquete anterior (1 lectura): sirve para saber qué cambió y para conservar lo que esta corrida no trae
+const refPaq = doc(db, 'ccba_cache', 'datos');
+let prev = null;
+try { const s = await getDoc(refPaq); if (s.exists()) prev = JSON.parse(s.data().json); } catch (e) { console.log('sin paquete anterior:', e.message); }
+
 const equipos = {}, partidos = {}, tablas = {};
 for (const t of data.torneos) {
   const div = DIV[t.cat]; if (!div) continue;
@@ -22,20 +28,46 @@ for (const t of data.torneos) {
   const idsTorneo = new Set();
   for (const p of t.partidos) {
     const cl = esCiudad(p.local), cv = esCiudad(p.visitante);
-    if (!cl && !cv) continue;
-    if (cl && cv) continue; // Ciudad vs Ciudad (A vs B): se omite para no duplicar
-    // Proyección (5ª tira de 7ma) figura como "CIUDAD" igual que la A: se la toma como tira E
-    const tira = /proyecc/i.test(t.nombre) ? 'E' : ((cl || cv)[1] || 'A').toUpperCase();
-    const eq = `${t.rama}-${div}-${tira.toLowerCase()}`;
-    idsTorneo.add(eq);
-    const rival = cl ? p.visitante : p.local;
-    const id = `lp-${eq}-${slug(t.nombre)}-${p.fecha}-${slug(rival)}`;
-    partidos[id] = { equipo: eq, fecha: p.fecha, hora: p.hora, rival, local: !!cl, sede: '', fechaN: p.fechaN || '',
-      gc: cl ? p.gl : p.gv, gr: cl ? p.gv : p.gl, torneo: t.nombre, copa, fuente: 'larry' };
-    if (!equipos[eq]) equipos[eq] = { rama: t.rama, div, tira, larry: true };
-    if (!copa) equipos[eq].torneo = t.nombre;
+    // Ciudad vs Ciudad (ej. Caballeros A vs B): el partido va en los dos equipos, cada uno desde su lado
+    for (const [esLocal, c] of [[true, cl], [false, cv]]) {
+      if (!c) continue;
+      // Proyección (5ª tira de 7ma) figura como "CIUDAD" igual que la A: se la toma como tira E
+      const tira = /proyecc/i.test(t.nombre) ? 'E' : (c[1] || 'A').toUpperCase();
+      const eq = `${t.rama}-${div}-${tira.toLowerCase()}`;
+      const rival = esLocal ? p.visitante : p.local;
+      if (esCiudad(rival) && tira === 'E') continue; // no se distingue un lado del otro
+      idsTorneo.add(eq);
+      const id = `lp-${eq}-${slug(t.nombre)}-${p.fecha}-${slug(rival)}`;
+      partidos[id] = { equipo: eq, fecha: p.fecha, hora: p.hora, rival, local: esLocal, sede: '', fechaN: p.fechaN || '',
+        gc: esLocal ? p.gl : p.gv, gr: esLocal ? p.gv : p.gl, torneo: t.nombre, copa, fuente: 'larry' };
+      if (!equipos[eq]) equipos[eq] = { rama: t.rama, div, tira, larry: true };
+      if (!copa) equipos[eq].torneo = t.nombre;
+    }
   }
   if (!copa && t.tabla.length) for (const eq of idsTorneo) tablas[eq] = { filas: t.tabla.map(f => ({ equipo: f.equipo, pj: f.pj, pg: f.pg, pe: f.pe, pp: f.pp, gf: f.gf, gc: f.gc, pts: f.pts })), torneo: t.nombre, actualizada, fuente: 'larry' };
+}
+
+// Torneo que esta vez no se pudo leer (error, o vacío cuando antes tenía partidos): quedan sus partidos y su tabla
+// anteriores, en vez de borrarlos de la web hasta la próxima corrida.
+for (const t of data.torneos) {
+  const div = DIV[t.cat]; if (!div || !prev) continue;
+  const delTorneo = (p) => p.torneo === t.nombre && p.equipo.startsWith(`${t.rama}-${div}-`);
+  const antes = Object.entries(prev.partidos || {}).filter(([, p]) => p.fuente === 'larry' && delTorneo(p));
+  if (!antes.length || !(t.error || !Object.values(partidos).some(delTorneo))) continue;
+  console.log('⚠', t.rama, t.cat, t.nombre, t.error ? `no se pudo leer (${t.error})` : 'vino vacío', '→ quedan los', antes.length, 'partidos anteriores');
+  for (const [id, p] of antes) partidos[id] = p;
+  for (const eq of new Set(antes.map(([, p]) => p.equipo))) {
+    equipos[eq] ||= { ...prev.equipos?.[eq] };
+    if (!tablas[eq] && prev.tablas?.[eq]?.torneo === t.nombre) tablas[eq] = prev.tablas[eq];
+  }
+}
+// Freno de mano: si de golpe falta una parte grande de los partidos, LarrySport respondió mal; no se toca nada.
+{
+  const nAntes = Object.values(prev?.partidos || {}).filter((p) => p.fuente === 'larry').length, nAhora = Object.keys(partidos).length;
+  if (nAntes > 50 && nAhora < nAntes * 0.7 && !process.env.FORZAR) {
+    console.error(`Hay ${nAhora} partidos y antes había ${nAntes}: no subo nada. Si es correcto (cambio de temporada), correr con FORZAR=1.`);
+    process.exit(1);
+  }
 }
 
 // planteles (de planillas.mjs): jugadores con id estable + cuerpo técnico en el equipo
@@ -56,9 +88,8 @@ if (fs.existsSync(plFile)) {
 // queda marcado/a como refuerzo de esa división. Entre Intermedia y Primera: es de donde jugó más partidos.
 {
   const ORD = { septima: 0, sexta: 1, quinta: 2, cuarta: 3, intermedia: 4, primera: 5 };
-  const nnj = (x) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/s+/).filter(Boolean).sort().join(' ');
   const grupos = {};
-  for (const [id, j] of Object.entries(jugadores)) { const [rama, div] = j.equipo.split('-'); if (!(div in ORD)) continue; (grupos[rama + '|' + nnj(j.nombre)] ||= []).push({ id, div }); }
+  for (const [id, j] of Object.entries(jugadores)) { const [rama, div] = j.equipo.split('-'); if (!(div in ORD)) continue; (grupos[rama + '|' + nn(j.nombre)] ||= []).push({ id, div }); }
   let n = 0;
   for (const g of Object.values(grupos)) {
     let menor = g.filter((x) => ORD[x.div] <= 2).sort((a, b) => ORD[a.div] - ORD[b.div])[0];
@@ -76,13 +107,31 @@ console.log(Object.keys(jugadores).length, 'jugadores');
 // goleadores oficiales (pestaña "Goleadores" de LarrySport, de goleadores.mjs): reemplazan a los goles leídos de las planillas
 const golFile = new URL('goleadores.json', import.meta.url);
 if (fs.existsSync(golFile)) {
-  const nn = (x) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
   const G = JSON.parse(fs.readFileSync(golFile, 'utf8'));
   for (const [eq, lista] of Object.entries(G)) {
     if (!equipos[eq]) continue;
     equipos[eq].goleadores = lista.map(({ nombre, goles, pj }) => ({ nombre, goles, pj }));
-    const porNombre = new Map(lista.map((g) => [nn(g.apellidoNombre.replace(',', ' ')), g.goles]));
-    for (const j of Object.values(jugadores)) if (j.equipo === eq) j.goles = porNombre.get(nn(j.nombre)) || 0;
+    for (const j of Object.values(jugadores)) if (j.equipo === eq) {
+      const g = lista.find((g) => mismoNombre(j.nombre, g.apellidoNombre));
+      j.goles = g ? g.goles : 0;
+    }
+  }
+  // goles por división y tira (de mayor a menor división) y el total personal, sumando todos los equipos de Ciudad de su rama
+  // ej. golesDetalle: [{ equipo: 'caballeros-sexta-a', div: 'sexta', tira: 'A', goles: 7, pj: 17 }, { ...septima-a 17 }, { ...septima-b 6 }] · golesTotal: 30
+  const ORDEN = ['primera', 'intermedia', 'segunda', 'cuarta', 'quinta', 'sexta', 'septima'];
+  const detalle = {};
+  for (const [eq, lista] of Object.entries(G)) for (const g of lista) {
+    const [rama, div, tira] = eq.split('-');
+    (detalle[rama + '|' + nn(g.apellidoNombre.replace(',', ' '))] ||= []).push({ equipo: eq, div, tira: tira.toUpperCase(), goles: g.goles, pj: g.pj });
+  }
+  for (const d of Object.values(detalle)) d.sort((a, b) => ORDEN.indexOf(a.div) - ORDEN.indexOf(b.div) || a.tira.localeCompare(b.tira));
+  for (const j of Object.values(jugadores)) {
+    const rama = j.equipo.split('-')[0];
+    const g = Object.entries(G).filter(([eq]) => eq.split('-')[0] === rama).flatMap(([, l]) => l).find((g) => mismoNombre(j.nombre, g.apellidoNombre));
+    j.golesDetalle = g ? detalle[rama + '|' + nn(g.apellidoNombre.replace(',', ' '))] : [];
+    j.golesTotal = j.golesDetalle.reduce((s, x) => s + x.goles, 0);
+    // la planilla corta los nombres largos ("Carranza Centeno Maria Josefi..."): se completa con el oficial
+    if (g && /\.\.\.\s*$/.test(j.nombre)) j.nombre = g.apellidoNombre.replace(/\s*,\s*/, ' ');
   }
   console.log('goleadores oficiales en', Object.keys(G).length, 'equipos');
 }
@@ -91,10 +140,6 @@ console.log(Object.keys(equipos).length, 'equipos,', Object.keys(partidos).lengt
 for (const [id, e] of Object.entries(equipos)) console.log('  ', id, '·', e.torneo || '(solo copa)', '·', Object.values(partidos).filter(p => p.equipo === id).length, 'partidos');
 if (SECO) process.exit(0);
 
-// Paquete anterior (1 lectura): sirve para saber qué cambió y para conservar lo que esta corrida no trae
-const refPaq = doc(db, 'ccba_cache', 'datos');
-let prev = null;
-try { const s = await getDoc(refPaq); if (s.exists()) prev = JSON.parse(s.data().json); } catch (e) { console.log('sin paquete anterior:', e.message); }
 // planteles / goleadores / cuerpo técnico: si esta corrida no los trae (modo rápido), quedan los anteriores
 for (const [id, e] of Object.entries(equipos)) { const p = prev?.equipos?.[id]; if (p) equipos[id] = { ...p, ...e }; }
 const jugFinal = Object.keys(jugadores).length ? jugadores : (prev?.jugadores || {});

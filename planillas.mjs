@@ -45,8 +45,9 @@ async function links() {
 const esCiudad = n => /^CIUDAD(?: ([A-H]))?$/i.exec((n || '').trim());
 function leerPdf(url) {
   const f = fileURLToPath(new URL(url.split('/').pop(), CACHE));
-  if (!fs.existsSync(f)) execFileSync('curl', ['-s', '-f', '-o', f, url]);
-  return execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', f, '-'], { encoding: 'utf8' });
+  if (!fs.existsSync(f)) execFileSync('curl', ['-s', '-f', '-L', '--retry', '3', '-o', f, url]);
+  // algunas planillas vienen con los acentos codificados dos veces ("SofÃ­a"): se reparan
+  return execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', f, '-'], { encoding: 'utf8' }).replace(/[\u00c2-\u00c3][\u0080-\u00bf]/g, (m) => Buffer.from(m, 'latin1').toString('utf8'));
 }
 // Devuelve { fecha, local, visitante, lados: { local: {jug, staff}, visitante: {...} } }
 function parsear(txt) {
@@ -61,9 +62,9 @@ function parsear(txt) {
   for (const l of L.slice(iHead + 1)) {
     if (/^\s*Arbitros|Juez de mesa|Observaciones/.test(l)) break;
     for (const [lado, s] of [['local', l.slice(0, cut)], ['visitante', l.slice(cut)]]) {
-      let m = /^\s*(\d{1,3})\s+(\(C\)\s+)?([A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]+?)(?:\s{2,}|\s+\d{5,}|\s*$)(?:\d{5,}\s+([\d-])\s)?/.exec(s);
-      if (m) { lados[lado].jug.push({ numero: m[1], nombre: m[3].trim(), capitan: !!m[2], goles: m[4] && m[4] !== '-' ? +m[4] : 0 }); continue; }
-      m = /^\s*([TAPM])\s+([^,]+,\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]+?)\s*$/.exec(s.trimStart().replace(/\s{2,}.*$/, ''));
+      let m = /^\s*(\d{1,3})\s+(\(C\)\s+)?([\p{L}' .-]+?)(?:\s{2,}|\s+(?=\d{5,})|\s*$)(?:(\d{5,})\s+([\d-])\s)?/u.exec(s);
+      if (m) { lados[lado].jug.push({ numero: m[1], nombre: m[3].trim(), capitan: !!m[2], registro: m[4] || '', goles: m[5] && m[5] !== '-' ? +m[5] : 0 }); continue; }
+      m = /^\s*([TAPM])\s+([^,]+,\s*[\p{L}' .-]+?)\s*$/u.exec(s.trimStart().replace(/\s{2,}.*$/, ''));
       if (m) lados[lado].staff.push({ rol: m[1], nombre: m[2].trim() });
     }
   }
@@ -73,7 +74,7 @@ function parsear(txt) {
 function leer() {
   const data = JSON.parse(fs.readFileSync(new URL('planillas_links.json', DIR), 'utf8'));
   const DIV = { Primera: 'primera', Intermedia: 'intermedia', Segunda: 'segunda', Cuarta: 'cuarta', Quinta: 'quinta', Sexta: 'sexta', Septima: 'septima' };
-  const equipos = {};
+  const equipos = {}, registros = {};
   for (const t of data) for (const u of t.planillas) {
     let p; try { p = parsear(leerPdf(u)); } catch (e) { console.log('  no pude leer', u, e.message); continue; }
     for (const lado of ['local', 'visitante']) {
@@ -83,6 +84,8 @@ function leer() {
       const E = equipos[id] ||= { jugadores: {}, staff: {}, planillas: 0 };
       E.planillas++;
       for (const j of p.lados[lado].jug) {
+        // número de registro AHBA: va aparte (registros.json, privado), nunca a planteles.json ni a la web
+        if (j.registro) { const r = registros[j.registro] ||= { nombre: j.nombre, rama: t.rama, equipos: [] }; if (!r.equipos.includes(id)) r.equipos.push(id); }
         const k = j.nombre.toLowerCase();
         const o = E.jugadores[k] ||= { nombre: j.nombre, numero: j.numero, pj: 0, goles: 0, capitan: false, ultima: '' };
         o.pj++; o.goles += j.goles; if (p.fecha >= o.ultima) { o.numero = j.numero; o.ultima = p.fecha; } if (j.capitan) o.capitan = true;
@@ -101,6 +104,8 @@ function leer() {
     console.log(id, E.planillas, 'planillas →', out[id].jugadores.length, 'jugadores ·', out[id].staff.map(s => s.rol + ' ' + s.nombre).slice(0, 3).join(' / '));
   }
   fs.writeFileSync(new URL('planteles.json', DIR), JSON.stringify(out, null, 1));
+  fs.writeFileSync(new URL('registros.json', DIR), JSON.stringify(registros, null, 1));
+  console.log(Object.keys(registros).length, 'números de registro (registros.json, privado)');
 }
 
 if (modo === 'links' || modo === 'todo') await links();

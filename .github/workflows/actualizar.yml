@@ -1,30 +1,41 @@
 name: Actualizar Ciudad Hockey
 on:
   schedule:
-    # fixture y resultados: cada 3 h de 9 a 21 (hora argentina) sáb, dom y lun
-    - cron: '0 12-23/3 * * 6,0,1'
-    # partidos entre semana: 22 h (hora argentina) de lunes a jueves
-    - cron: '0 1 * * 2-5'
-    # torneos + planteles: martes 23 h (hora argentina)
-    - cron: '0 2 * * 3'
+    # GitHub demora o saltea corridas programadas, sobre todo las de minuto 0: se usan minutos sueltos
+    # y corridas seguidas en días de partido, así aunque se pierda alguna los resultados llegan igual.
+    # sáb y dom: cada hora de 10 a 20 h (hora argentina) ...
+    - cron: '17 13-23 * * 6,0'
+    # ... y de 21 a 23 h (00-02 UTC del día siguiente)
+    - cron: '17 0-2 * * 0,1'
+    # lunes (feriados): cada 3 h de 10 a 19 h
+    - cron: '17 13-22/3 * * 1'
+    # partidos entre semana: 22:17 h de lunes a viernes
+    - cron: '17 1 * * 2-6'
+    # torneos + planteles: martes 23:43 h
+    - cron: '43 2 * * 3'
   workflow_dispatch:
     inputs:
       modo:
-        description: 'fixture (rápido) o planteles (torneos + planillas, ~40 min)'
+        description: 'fixture (rápido), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
         type: choice
-        options: [fixture, planteles]
+        options: [fixture, planteles, registros, historico, historico-prueba, explorar]
         default: fixture
+      temporada:
+        description: 'Temporada para historico (2022 a 2025)'
+        type: string
+        default: '2025'
 permissions:
   contents: write
-concurrency: actualizar
+# cada temporada histórica en su propio grupo: no se cancelan entre sí ni frenan las corridas programadas
+concurrency: ${{ startsWith(github.event.inputs.modo, 'historico') && format('historico-{0}', github.event.inputs.temporada) || 'actualizar' }}
 jobs:
   actualizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: ${{ startsWith(github.event.inputs.modo, 'historico') && 240 || 90 }}
     env:
       CHROME_PATH: /usr/bin/google-chrome
       TZ: America/Argentina/Buenos_Aires
-      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '0 2 * * 3' && 'planteles' || 'fixture') }}
+      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '43 2 * * 3' && 'planteles' || 'fixture') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,16 +48,53 @@ jobs:
         if: env.MODO == 'planteles'
         run: node larry.mjs todo
       - name: Planteles desde las planillas
-        if: env.MODO == 'planteles'
+        if: env.MODO == 'planteles' || env.MODO == 'registros'
         run: |
-          sudo apt-get install -y poppler-utils > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
           node planillas.mjs todo
       - name: Goleadores oficiales (necesita los planteles para separar Caballeros A y B)
         if: env.MODO == 'planteles'
         run: node goleadores.mjs
+      # números de registro AHBA de cada jugador/a: solo se guardan si el repo es privado (adjunto de la corrida, 30 días)
+      - name: ¿Repo privado?
+        id: privado
+        if: env.MODO == 'planteles' || env.MODO == 'registros'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "privado=$(gh api repos/${{ github.repository }} --jq .private)" >> "$GITHUB_OUTPUT"
+      - name: Guardar registros (privado)
+        if: steps.privado.outputs.privado == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros
+          path: registros.json
+          retention-days: 30
+      - name: Registros no guardados (repo público)
+        if: steps.privado.outputs.privado == 'false'
+        run: echo 'El repo es público, registros.json no se guarda.'
+      - name: Explorar temporadas anteriores (no escribe nada)
+        if: env.MODO == 'explorar'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
+          node historico.mjs planilla
+      - name: Temporada anterior desde LarrySport
+        if: startsWith(env.MODO, 'historico')
+        env:
+          TEMPORADA: ${{ github.event.inputs.temporada }}
+        run: |
+          node larry.mjs todo
+          node historico.mjs subir "$TEMPORADA" ${{ env.MODO == 'historico-prueba' && '--seco' || '' }}
       - name: Subir a Firestore
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: node subir.mjs
+      - name: Perfiles de jugadores (temporada actual + anteriores)
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
+        run: node perfiles.mjs
+      - name: Control de datos (avisos en el resumen de la corrida)
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
+        run: node auditar.mjs
       - name: Guardar lista de torneos si cambió
+        if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: |
           git config user.name "ciudad-hockey-bot"
           git config user.email "actions@users.noreply.github.com"
