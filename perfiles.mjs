@@ -65,7 +65,9 @@ export function armarPerfiles(actual, historicos, anioActual, padron = {}) {
     // menores: se los muestra por categoría (sus temporadas), nunca con año de nacimiento.
     // Solo se publica la estimación cuando seguro tiene 18 o más (nació antes de anioActual - 18).
     // padrón del club (padron.mjs): fecha de nacimiento desde los 18; menores, solo la categoría
-    const pad = p.claves.map((k) => padron[k]).find(Boolean);
+    // por clave exacta (nombre de planilla al cargar el padrón) o, si la planilla cambió el nombre
+    // (completado desde los goleadores, o la persona salió del plantel actual), por nombre
+    const pad = p.claves.map((k) => padron[k]).find(Boolean) || porNombre(padron, p);
     if (pad?.nacimiento) res.nacimiento = pad.nacimiento;
     else if (pad?.categoria) res.categoria = pad.categoria;
     else {
@@ -76,6 +78,15 @@ export function armarPerfiles(actual, historicos, anioActual, padron = {}) {
     out.push(res);
   }
   return out.sort((a, b) => b.goles - a.goles || a.nombre.localeCompare(b.nombre));
+}
+
+function porNombre(padron, p) {
+  const nombres = [p.nombre, p.apellidoNombre].filter(Boolean);
+  const m = Object.entries(padron).filter(([k]) => {
+    const [rama, nom] = k.split('|');
+    return rama === p.rama && nombres.some((n) => nn(nom) === nn(n.replace(',', ' ')) || mismoNombre(nom, n.includes(',') ? n : n.replace(/\s+/, ', ')));
+  });
+  return m.length === 1 ? m[0][1] : null;
 }
 
 // Con la tabla de edades se acota el año de nacimiento. Se puede jugar para arriba pero no para abajo:
