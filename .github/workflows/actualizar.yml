@@ -46,7 +46,7 @@ jobs:
       - name: Planteles desde las planillas
         if: env.MODO == 'planteles'
         run: |
-          sudo apt-get install -y poppler-utils > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
           node planillas.mjs todo
       - name: Goleadores oficiales (necesita los planteles para separar Caballeros A y B)
         if: env.MODO == 'planteles'
@@ -54,7 +54,7 @@ jobs:
       - name: Explorar temporadas anteriores (no escribe nada)
         if: env.MODO == 'explorar'
         run: |
-          sudo apt-get install -y poppler-utils > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
           node historico.mjs planilla
       - name: Temporada anterior desde LarrySport
         if: startsWith(env.MODO, 'historico')
