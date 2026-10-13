@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'fixture (rápido), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir) o explorar'
+        description: 'fixture (rápido), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
         type: choice
-        options: [fixture, planteles, historico, historico-prueba, explorar]
+        options: [fixture, planteles, registros, historico, historico-prueba, explorar]
         default: fixture
       temporada:
         description: 'Temporada para historico (2022 a 2025)'
@@ -44,13 +44,30 @@ jobs:
         if: env.MODO == 'planteles'
         run: node larry.mjs todo
       - name: Planteles desde las planillas
-        if: env.MODO == 'planteles'
+        if: env.MODO == 'planteles' || env.MODO == 'registros'
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
           node planillas.mjs todo
       - name: Goleadores oficiales (necesita los planteles para separar Caballeros A y B)
         if: env.MODO == 'planteles'
         run: node goleadores.mjs
+      # números de registro AHBA de cada jugador/a: solo se guardan si el repo es privado (adjunto de la corrida, 30 días)
+      - name: ¿Repo privado?
+        id: privado
+        if: env.MODO == 'planteles' || env.MODO == 'registros'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "privado=$(gh api repos/${{ github.repository }} --jq .private)" >> "$GITHUB_OUTPUT"
+      - name: Guardar registros (privado)
+        if: steps.privado.outputs.privado == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: registros
+          path: registros.json
+          retention-days: 30
+      - name: Registros no guardados (repo público)
+        if: steps.privado.outputs.privado == 'false'
+        run: echo 'El repo es público, registros.json no se guarda.'
       - name: Explorar temporadas anteriores (no escribe nada)
         if: env.MODO == 'explorar'
         run: |
