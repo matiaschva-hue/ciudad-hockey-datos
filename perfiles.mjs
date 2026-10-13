@@ -61,8 +61,11 @@ export function armarPerfiles(actual, historicos, anioActual) {
       goles: p.temporadas.reduce((s, t) => s + t.goles, 0),
       golesPorAnio: Object.fromEntries(anios.map((a) => [a, p.temporadas.filter((t) => t.anio === a).reduce((s, t) => s + t.goles, 0)])),
     };
+    // menores: se los muestra por categoría (sus temporadas), nunca con año de nacimiento.
+    // Solo se publica la estimación cuando seguro tiene 18 o más (nació antes de anioActual - 18).
     const nac = estimarNacimiento(p.temporadas);
-    if (nac) res.nacimiento = nac;
+    const masJoven = nac && (nac.anio ?? nac.hasta ?? Infinity);
+    if (nac && masJoven <= anioActual - 18) res.nacimiento = nac;
     out.push(res);
   }
   return out.sort((a, b) => b.goles - a.goles || a.nombre.localeCompare(b.nombre));
