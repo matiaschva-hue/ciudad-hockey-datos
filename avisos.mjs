@@ -56,6 +56,14 @@ const nuevosRes = P.filter((p) => p.fuente === 'larry' && p.gc != null && p.fech
 if (nuevosRes.length > 4) avisos.push({ clave: nuevosRes.map((p) => `res|${p.id}`), titulo: `Resultados · ${nuevosRes.length} partidos`, texto: nuevosRes.slice(0, 6).map((p) => `${equipoTxt(p.equipo)}: ${p.gc}-${p.gr} ${p.rival}`).join(' · '), url: './#/redes' });
 else for (const p of nuevosRes) nuevo(`res|${p.id}`, `${res(p)} ${equipoTxt(p.equipo)} · ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Armá el posteo de resultado.`, `./#/p/${p.id}`);
 
+// fotos nuevas de Hockey MUNI HD para revisar en Ciudad Studio (las baja la rutina de la compu del CM)
+try {
+  const fotos = await (await fetch('https://ciudad-hockey.web.app/fotos.json?t=' + Date.now())).json(), rev = (await leer('ccba_config', 'fotos')) || {};
+  const pend = fotos.filter((f) => f.pendiente && !(rev.ok || {})[f.src] && !(rev.no || {})[f.src]);
+  if (pend.length) { const ult = pend.map((f) => f.nueva || '').sort().pop();
+    nuevo(`fotos|${ult}`, 'Fotos nuevas para revisar', `${pend.length} fotos de Hockey MUNI HD (${[...new Set(pend.map((f) => f.partido))].slice(0, 2).join(' · ')}). Tocá ✓ en las que quieras usar.`); }
+} catch (e) { console.log('fotos:', e.message); }
+
 // cumpleaños (plantel superior, temporada actual o la anterior) — igual que el Studio
 const cumples = (f) => perfiles.filter((p) => p.nacimiento && p.nacimiento.slice(5) === f.slice(5)).filter((p) => { const ult = Math.max(...(p.temporadas || []).map((t) => t.anio)); return ult >= +f.slice(0, 4) - 1 && (p.temporadas || []).some((t) => t.anio === ult && ['primera', 'intermedia'].includes(t.div)); });
 const juegan = (f) => P.filter((p) => p.fecha === f && p.gc == null && !p.suspendido);
