@@ -35,8 +35,9 @@ const pl = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function apellido(nombre, rama) {
   const corto = /\.{2,}\s*$/.test(nombre); let W = nombre.replace(/\.{2,}\s*$/, '').trim().split(/\s+/); if (corto && W.length > 2) W = W.slice(0, -1);
   const Wn = W.map(pl), c = perfiles.filter((x) => x.rama === rama && (() => { const w = pl(x.nombre).split(/\s+/); return Wn.every((p) => w.includes(p)) && (corto || w.length === Wn.length); })());
-  if (c.length === 1) { const Q = pl(c[0].nombre).split(/\s+/); for (let k = corto ? Wn.length : Wn.length - 1; k >= 1; k--) if (Wn.slice(0, k).join(' ') === Q.slice(-k).join(' ')) return W.slice(0, k).join(' '); }
-  return corto ? W.join(' ') : W[0];
+  // "M. Vensentini Callioni": inicial del primer nombre + apellido (hay hermanos en el club)
+  if (c.length === 1) { const Q = pl(c[0].nombre).split(/\s+/); for (let k = corto ? Wn.length : Wn.length - 1; k >= 1; k--) if (Wn.slice(0, k).join(' ') === Q.slice(-k).join(' ')) return `${c[0].nombre[0].toUpperCase()}. ${W.slice(0, k).join(' ')}`; }
+  return corto ? W.join(' ') : `${W[1][0].toUpperCase()}. ${W[0]}`;
 }
 const golesTxt = (p) => (p.goleadores || []).slice().sort((a, b) => b.goles - a.goles).map((j) => apellido(j.nombre, (E[p.equipo] || {}).rama) + (j.goles > 1 ? ` ×${j.goles}` : '')).join(', ');
 const partidoTxt = (p) => `${equipoTxt(p.equipo)}${p.hora ? ' ' + p.hora + ' h' : ''} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`;
