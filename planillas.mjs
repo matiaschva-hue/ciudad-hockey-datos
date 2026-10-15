@@ -4,15 +4,12 @@
 // Guarda planteles.json. No guarda números de carnet.
 // Uso: node planillas.mjs [links|leer|todo]
 import fs from 'fs';
-import { execFileSync } from 'child_process';
 import puppeteer from 'puppeteer-core';
-import { fileURLToPath } from 'url';
+import { leerPdf, parsear, esCiudad } from './planilla_pdf.mjs';
 
 const DIR = new URL('.', import.meta.url);
 const CLUB = '00000009';
 const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const PDFTOTEXT = process.env.PDFTOTEXT || (fs.existsSync('C:/Program Files/Git/mingw64/bin/pdftotext.exe') ? 'C:/Program Files/Git/mingw64/bin/pdftotext.exe' : 'pdftotext');
-const CACHE = new URL('pdf/', DIR); fs.mkdirSync(CACHE, { recursive: true });
 const modo = process.argv[2] || 'todo';
 const espera = ms => new Promise(r => setTimeout(r, ms));
 
@@ -42,39 +39,10 @@ async function links() {
   return out;
 }
 
-const esCiudad = n => /^CIUDAD(?: ([A-H]))?$/i.exec((n || '').trim());
-function leerPdf(url) {
-  const f = fileURLToPath(new URL(url.split('/').pop(), CACHE));
-  if (!fs.existsSync(f)) execFileSync('curl', ['-s', '-f', '-L', '--retry', '3', '-o', f, url]);
-  // algunas planillas vienen con los acentos codificados dos veces ("SofÃ­a"): se reparan
-  return execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', f, '-'], { encoding: 'utf8' }).replace(/[\u00c2-\u00c3][\u0080-\u00bf]/g, (m) => Buffer.from(m, 'latin1').toString('utf8'));
-}
-// Devuelve { fecha, local, visitante, lados: { local: {jug, staff}, visitante: {...} } }
-function parsear(txt) {
-  const L = txt.split(/\r?\n/);
-  const fecha = (/(\d{4}-\d{2}-\d{2})/.exec(txt) || [])[1] || '';
-  const iEq = L.findIndex(l => /Equipo local/.test(l));
-  const eqLine = L.slice(iEq + 1).find(l => l.trim());
-  const [local, visitante] = eqLine.trim().split(/\s{2,}\d*\s*/).filter(Boolean).map(s => s.trim());
-  const iHead = L.findIndex(l => /Local\s+Carnet/.test(l));
-  const cut = L[iHead].search(/N\S?\s+Visitante/);
-  const lados = { local: { jug: [], staff: [] }, visitante: { jug: [], staff: [] } };
-  for (const l of L.slice(iHead + 1)) {
-    if (/^\s*Arbitros|Juez de mesa|Observaciones/.test(l)) break;
-    for (const [lado, s] of [['local', l.slice(0, cut)], ['visitante', l.slice(cut)]]) {
-      let m = /^\s*(\d{1,3})\s+(\(C\)\s+)?([\p{L}' .-]+?)(?:\s{2,}|\s+(?=\d{5,})|\s*$)(?:(\d{5,})\s+([\d-])\s)?/u.exec(s);
-      if (m) { lados[lado].jug.push({ numero: m[1], nombre: m[3].trim(), capitan: !!m[2], registro: m[4] || '', goles: m[5] && m[5] !== '-' ? +m[5] : 0 }); continue; }
-      m = /^\s*([TAPM])\s+([^,]+,\s*[\p{L}' .-]+?)\s*$/u.exec(s.trimStart().replace(/\s{2,}.*$/, ''));
-      if (m) lados[lado].staff.push({ rol: m[1], nombre: m[2].trim() });
-    }
-  }
-  return { fecha, local, visitante, lados };
-}
-
 function leer() {
   const data = JSON.parse(fs.readFileSync(new URL('planillas_links.json', DIR), 'utf8'));
   const DIV = { Primera: 'primera', Intermedia: 'intermedia', Segunda: 'segunda', Cuarta: 'cuarta', Quinta: 'quinta', Sexta: 'sexta', Septima: 'septima' };
-  const equipos = {}, registros = {};
+  const equipos = {}, registros = {}, golesPartido = {}; // golesPartido: equipo|fecha|rival → goleadores de Ciudad en ese partido
   for (const t of data) for (const u of t.planillas) {
     let p; try { p = parsear(leerPdf(u)); } catch (e) { console.log('  no pude leer', u, e.message); continue; }
     for (const lado of ['local', 'visitante']) {
@@ -83,6 +51,7 @@ function leer() {
       const id = `${t.rama}-${DIV[t.cat]}-${tira.toLowerCase()}`;
       const E = equipos[id] ||= { jugadores: {}, staff: {}, planillas: 0 };
       E.planillas++;
+      golesPartido[`${id}|${p.fecha}|${lado === 'local' ? p.visitante : p.local}`] = p.lados[lado].jug.filter(j => j.goles > 0).map(({ nombre, numero, goles }) => ({ nombre, numero, goles }));
       for (const j of p.lados[lado].jug) {
         // número de registro AHBA: va aparte (registros.json, privado), nunca a planteles.json ni a la web
         if (j.registro) { const r = registros[j.registro] ||= { nombre: j.nombre, rama: t.rama, equipos: [] }; if (!r.equipos.includes(id)) r.equipos.push(id); }
@@ -105,9 +74,10 @@ function leer() {
   }
   fs.writeFileSync(new URL('planteles.json', DIR), JSON.stringify(out, null, 1));
   fs.writeFileSync(new URL('registros.json', DIR), JSON.stringify(registros, null, 1));
+  fs.writeFileSync(new URL('goles_partidos.json', DIR), JSON.stringify(golesPartido, null, 1));
   console.log(Object.keys(registros).length, 'números de registro (registros.json, privado)');
 }
 
 if (modo === 'links' || modo === 'todo') await links();
 if (modo === 'leer' || modo === 'todo') leer();
-if (modo === 'test') console.log(JSON.stringify(parsear(execFileSync(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', process.argv[3], '-'], { encoding: 'utf8' })), null, 1));
+if (modo === 'test') console.log(JSON.stringify(parsear(leerPdf(process.argv[3])), null, 1));

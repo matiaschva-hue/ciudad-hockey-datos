@@ -1,25 +1,25 @@
 name: Actualizar Ciudad Hockey
 on:
   schedule:
-    # GitHub demora o saltea corridas programadas, sobre todo las de minuto 0: se usan minutos sueltos
-    # y corridas seguidas en días de partido, así aunque se pierda alguna los resultados llegan igual.
-    # sáb y dom: cada hora de 10 a 20 h (hora argentina) ...
-    - cron: '17 13-23 * * 6,0'
-    # ... y de 21 a 23 h (00-02 UTC del día siguiente)
-    - cron: '17 0-2 * * 0,1'
-    # lunes (feriados): cada 3 h de 10 a 19 h
-    - cron: '17 13-22/3 * * 1'
-    # partidos entre semana: 22:17 h de lunes a viernes
-    - cron: '17 1 * * 2-6'
+    # GitHub demora o saltea corridas programadas (a veces horas): por eso hay muchas, con minutos sueltos.
+    # Las de horario de partido van en modo RÁPIDO (solo torneos con partidos ayer/hoy/mañana, ~1-2 min).
+    # sáb y dom: cada 15 min de 10 a 23:59 h (hora argentina = UTC-3)
+    - cron: '7,22,37,52 13-23 * * 6,0'
+    - cron: '7,22,37,52 0-2 * * 0,1'
+    # lunes a viernes (partidos entre semana y feriados): cada 15 min de 17 a 23:59 h
+    - cron: '7,22,37,52 20-23 * * 1-5'
+    - cron: '7,22,37,52 0-2 * * 2-6'
+    # pasada completa (todos los torneos): todos los días 6:41 h
+    - cron: '41 9 * * *'
     # torneos + planteles: martes 23:43 h
     - cron: '43 2 * * 3'
   workflow_dispatch:
     inputs:
       modo:
-        description: 'fixture (rápido), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
+        description: 'rapido (solo torneos con partidos ayer/hoy/mañana, 1-2 min), fixture (todos los torneos), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
         type: choice
-        options: [fixture, planteles, registros, historico, historico-prueba, explorar]
-        default: fixture
+        options: [rapido, fixture, planteles, registros, historico, historico-prueba, explorar]
+        default: rapido
       temporada:
         description: 'Temporada para historico (2022 a 2025)'
         type: string
@@ -35,15 +35,19 @@ jobs:
     env:
       CHROME_PATH: /usr/bin/google-chrome
       TZ: America/Argentina/Buenos_Aires
-      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '43 2 * * 3' && 'planteles' || 'fixture') }}
+      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '43 2 * * 3' && 'planteles' || (github.event.schedule == '41 9 * * *' && 'fixture' || 'rapido')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm install --no-audit --no-fund
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      # pdftotext para leer las planillas (goleadores de cada partido)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
       - name: Fixture, resultados y tablas
-        if: env.MODO == 'fixture'
+        if: env.MODO == 'fixture' || env.MODO == 'rapido'
         run: node larry.mjs leer
+        env:
+          RAPIDO: ${{ env.MODO == 'rapido' && '1' || '' }}
       - name: Torneos (de nuevo) + fixture
         if: env.MODO == 'planteles'
         run: node larry.mjs todo
@@ -85,7 +89,7 @@ jobs:
           node larry.mjs todo
           node historico.mjs subir "$TEMPORADA" ${{ env.MODO == 'historico-prueba' && '--seco' || '' }}
       - name: Subir a Firestore
-        if: env.MODO == 'fixture' || env.MODO == 'planteles'
+        if: env.MODO == 'fixture' || env.MODO == 'planteles' || env.MODO == 'rapido'
         run: node subir.mjs
       - name: Perfiles de jugadores (temporada actual + anteriores)
         if: env.MODO == 'fixture' || env.MODO == 'planteles'

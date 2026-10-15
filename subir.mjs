@@ -22,6 +22,9 @@ let prev = null;
 try { const s = await getDoc(refPaq); if (s.exists()) prev = JSON.parse(s.data().json); } catch (e) { console.log('sin paquete anterior:', e.message); }
 
 const equipos = {}, partidos = {}, tablas = {};
+let golesPl = {}; try { golesPl = JSON.parse(fs.readFileSync(new URL('goles_partidos.json', import.meta.url), 'utf8')); } catch (e) {}
+const golesDe = (eq, fecha, rival) => { const ks = Object.keys(golesPl).filter(k => k.startsWith(`${eq}|${fecha}|`));
+  return golesPl[ks.find(k => slug(k.split('|')[2]) === slug(rival)) || (ks.length === 1 ? ks[0] : '')]; };
 for (const t of data.torneos) {
   const div = DIV[t.cat]; if (!div) continue;
   const copa = /copa/i.test(t.nombre);
@@ -40,6 +43,8 @@ for (const t of data.torneos) {
       const id = `lp-${eq}-${slug(t.nombre)}-${p.fecha}-${slug(rival)}`;
       partidos[id] = { equipo: eq, fecha: p.fecha, hora: p.hora, rival, local: esLocal, sede: '', fechaN: p.fechaN || '',
         gc: esLocal ? p.gl : p.gv, gr: esLocal ? p.gv : p.gl, torneo: t.nombre, copa, fuente: 'larry' };
+      const gol = (esLocal ? p.golesLocal : p.golesVis) || golesDe(eq, p.fecha, rival) || prev?.partidos?.[id]?.goleadores;
+      if (gol && p.gl != null) partidos[id].goleadores = gol;
       if (!equipos[eq]) equipos[eq] = { rama: t.rama, div, tira, larry: true };
       if (!copa) equipos[eq].torneo = t.nombre;
     }
@@ -54,7 +59,7 @@ for (const t of data.torneos) {
   const delTorneo = (p) => p.torneo === t.nombre && p.equipo.startsWith(`${t.rama}-${div}-`);
   const antes = Object.entries(prev.partidos || {}).filter(([, p]) => p.fuente === 'larry' && delTorneo(p));
   if (!antes.length || !(t.error || !Object.values(partidos).some(delTorneo))) continue;
-  console.log('⚠', t.rama, t.cat, t.nombre, t.error ? `no se pudo leer (${t.error})` : 'vino vacío', '→ quedan los', antes.length, 'partidos anteriores');
+  if (!t.salteado) console.log('⚠', t.rama, t.cat, t.nombre, t.error ? `no se pudo leer (${t.error})` : 'vino vacío', '→ quedan los', antes.length, 'partidos anteriores');
   for (const [id, p] of antes) partidos[id] = p;
   for (const eq of new Set(antes.map(([, p]) => p.equipo))) {
     equipos[eq] ||= { ...prev.equipos?.[eq] };

@@ -2,8 +2,12 @@
 // Lee la web pública con un navegador, filtrada por el club CIUDAD (igual que la app de resultados de REAL).
 // Uso: node larry.mjs [descubrir|leer|todo]   → escribe larry_torneos.json / larry_data.json
 // Temporadas anteriores: TEMPORADA=2024 node larry.mjs todo → larry_torneos_2024.json / larry_data_2024.json
+// RAPIDO=1 node larry.mjs leer → solo los torneos con partidos de Ciudad ayer, hoy o mañana (los demás quedan como estaban al subir)
 import fs from 'fs';
 import puppeteer from 'puppeteer-core';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { leerPdf, parsear, golesCiudad } from './planilla_pdf.mjs';
 
 const BASE = 'https://tournamenttracker.buenosaireshockey.ar/';
 const CLUB = '00000009';
@@ -14,6 +18,9 @@ const DIR = new URL('.', import.meta.url);
 const espera = ms => new Promise(r => setTimeout(r, ms));
 const modo = process.argv[2] || 'todo';
 const TEMPORADA = process.env.TEMPORADA || '';
+const RAPIDO = !!process.env.RAPIDO && !TEMPORADA;
+const isoDia = (d) => new Date(Date.now() + d * 864e5 - 3 * 36e5).toISOString().slice(0, 10); // día en hora argentina (d = -1 ayer, 0 hoy, 1 mañana)
+const DIAS_PLANILLA = 3; // partidos jugados en los últimos 3 días: se lee su planilla para saber quién hizo los goles
 const sufijo = TEMPORADA ? '_' + TEMPORADA : '';
 
 async function hacerClick(pg, fn, arg, que) {
@@ -112,6 +119,34 @@ async function leerTorneo(pg, t) {
     if (!loc || !vis) continue;
     partidos.push({ fecha: `${anio}-${pad(MES[m[3]] + 1)}-${pad(m[2])}`, hora: m[4] || '', local: loc, visitante: vis, gl, gv, fechaN: ronda && !fechaN ? ronda : fechaN });
   }
+  // goleadores de Ciudad de los partidos recién jugados: el botón "Ver planilla" de cada fila abre el PDF
+  if (!TEMPORADA) {
+    const desde = isoDia(-DIAS_PLANILLA), MESN = MES;
+    const filas = await pg.evaluate(() => {
+      const out = [], vistos = new Set();
+      document.querySelectorAll('main button[title="Ver planilla"]').forEach((b, i) => {
+        if (b.disabled) return; let e = b;
+        for (let k = 0; k < 8 && e; k++) { e = e.parentElement; if ((e?.innerText.match(/\n/g) || []).length >= 3) break; }
+        const txt = (e?.innerText || '').split('\n').map(x => x.trim()).filter(Boolean).join('|');
+        if (!vistos.has(txt)) { vistos.add(txt); out.push({ i, txt }); }
+      });
+      return out;
+    });
+    for (const f of filas) {
+      const [fe, loc, a, b, vis] = f.txt.split('|'), m = /^\S+ (\d{1,2}) (\w{3,4})/.exec(fe || '');
+      if (!m || MESN[m[2]] === undefined || !/^\d+/.test(a || '') || !/^\d+/.test(b || '')) continue;
+      const fecha = `${anio}-${pad(MESN[m[2]] + 1)}-${pad(m[1])}`; if (fecha < desde) continue;
+      const p = partidos.find(x => x.fecha === fecha && limpia(x.local) === limpia(loc) && limpia(x.visitante) === limpia(vis)); if (!p) continue;
+      try {
+        const url = await pg.evaluate(async (i) => { let u = ''; const o = window.open; window.open = (x) => { u = x; return null; };
+          document.querySelectorAll('main button[title="Ver planilla"]')[i].click(); await new Promise(r => setTimeout(r, 1200)); window.open = o; return u; }, f.i);
+        if (!url) continue;
+        const g = golesCiudad(parsear(leerPdf(url)));
+        if (g.local) p.golesLocal = g.local; if (g.visitante) p.golesVis = g.visitante;
+        console.log('   planilla', fecha, loc, a, '-', b, vis, '→', [...(g.local || []), ...(g.visitante || [])].map(j => j.nombre + (j.goles > 1 ? ' x' + j.goles : '')).join(', ') || 'sin goles de Ciudad');
+      } catch (e) { console.log('   no pude leer la planilla de', fecha, loc, vis, e.message); }
+    }
+  }
   // posiciones
   let tabla = [];
   const tieneTab = await pg.evaluate(() => { const b = [...document.querySelectorAll('main button, main [role=tab]')].find(b => b.innerText.trim() === 'Posiciones'); if (!b) return false; b.click(); return true; });
@@ -149,12 +184,24 @@ const pg = await browser.newPage();
 await pg.setViewport({ width: 1280, height: 1000 });
 try {
   let torneos = modo === 'leer' ? JSON.parse(fs.readFileSync(new URL(`larry_torneos${sufijo}.json`, DIR), 'utf8')) : await descubrir(pg);
+  let saltear = [];
+  if (RAPIDO) {
+    const db = getFirestore(initializeApp({ apiKey: 'AIzaSyB4xqW0rHESTovZqGQUIsUR07XBekqjuX0', authDomain: 'muni-hockey.firebaseapp.com', projectId: 'muni-hockey' }));
+    const s = await getDoc(doc(db, 'ccba_cache', 'datos')), prev = s.exists() ? JSON.parse(s.data().json) : null;
+    const dias = [isoDia(-1), isoDia(0), isoDia(1)], DIVC = { primera: 'Primera', intermedia: 'Intermedia', segunda: 'Segunda', cuarta: 'Cuarta', quinta: 'Quinta', sexta: 'Sexta', septima: 'Septima' };
+    const clave = new Set(Object.values(prev?.partidos || {}).filter(p => p.fuente === 'larry' && dias.includes(p.fecha)).map(p => `${p.equipo.split('-')[0]}|${DIVC[p.equipo.split('-')[1]]}|${p.torneo}`));
+    const usar = torneos.filter(t => clave.has(`${t.rama}|${t.cat}|${t.nombre}`));
+    saltear = torneos.filter(t => !usar.includes(t)); torneos = usar;
+    console.log('Modo rápido:', torneos.length, 'torneos con partidos', dias.join(' / '), '·', saltear.length, 'quedan como estaban');
+  }
   if (modo !== 'descubrir') {
     const data = [];
     for (const t of torneos) {
       try { const r = await leerTorneo(pg, t); data.push(r); console.log(t.rama, t.cat, t.nombre, '→', r.partidos.length, 'partidos,', r.tabla.length, 'en tabla'); }
       catch (e) { console.log('ERROR', t.nombre, e.message); data.push({ ...t, error: e.message, partidos: [], tabla: [] }); }
     }
-    fs.writeFileSync(new URL(`larry_data${sufijo}.json`, DIR), JSON.stringify({ temporada: +TEMPORADA || new Date().getFullYear(), leido: new Date().toISOString(), torneos: data }, null, 1));
+    // modo rápido: los torneos no leídos van marcados para que subir.mjs conserve lo que ya estaba
+    for (const t of saltear) data.push({ ...t, error: 'no leído (modo rápido)', partidos: [], tabla: [], salteado: true });
+    fs.writeFileSync(new URL(`larry_data${sufijo}.json`, DIR), JSON.stringify({ temporada: +TEMPORADA || new Date().getFullYear(), leido: new Date().toISOString(), rapido: RAPIDO, torneos: data }, null, 1));
   }
 } finally { await browser.close(); }
