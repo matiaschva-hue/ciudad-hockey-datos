@@ -11,6 +11,8 @@ on:
     - cron: '7,22,37,52 0-2 * * 2-6'
     # pasada completa (todos los torneos): todos los días 6:41 h
     - cron: '41 9 * * *'
+    # avisos al celular (pedidos de acceso, qué publicar): cada hora de 8 a 23 h, sin leer LarrySport
+    - cron: '47 11-23,0-2 * * *'
     # torneos + planteles: martes 23:43 h
     - cron: '43 2 * * 3'
   workflow_dispatch:
@@ -18,7 +20,7 @@ on:
       modo:
         description: 'rapido (solo torneos con partidos ayer/hoy/mañana, 1-2 min), fixture (todos los torneos), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
         type: choice
-        options: [rapido, fixture, planteles, registros, historico, historico-prueba, explorar]
+        options: [rapido, avisos, fixture, planteles, registros, historico, historico-prueba, explorar]
         default: rapido
       temporada:
         description: 'Temporada para historico (2022 a 2025)'
@@ -35,14 +37,15 @@ jobs:
     env:
       CHROME_PATH: /usr/bin/google-chrome
       TZ: America/Argentina/Buenos_Aires
-      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '43 2 * * 3' && 'planteles' || (github.event.schedule == '41 9 * * *' && 'fixture' || 'rapido')) }}
+      MODO: ${{ github.event.inputs.modo || (github.event.schedule == '43 2 * * 3' && 'planteles' || (github.event.schedule == '41 9 * * *' && 'fixture' || (github.event.schedule == '47 11-23,0-2 * * *' && 'avisos' || 'rapido'))) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci --no-audit --no-fund
       # pdftotext para leer las planillas (goleadores de cada partido)
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
+      - if: env.MODO != 'avisos'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
       - name: Fixture, resultados y tablas
         if: env.MODO == 'fixture' || env.MODO == 'rapido'
         run: node larry.mjs leer
@@ -97,6 +100,11 @@ jobs:
       - name: Control de datos (avisos en el resumen de la corrida)
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: node auditar.mjs
+      - name: Avisos al celular (qué publicar, resultados, pedidos de acceso)
+        if: always() && (env.MODO == 'fixture' || env.MODO == 'planteles' || env.MODO == 'rapido' || env.MODO == 'avisos')
+        env:
+          VAPID_PRIVATE: ${{ secrets.VAPID_PRIVATE }}
+        run: node avisos.mjs
       - name: Guardar lista de torneos si cambió
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: |

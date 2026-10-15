@@ -5,6 +5,7 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "firebase": "^11.0.1",
-    "puppeteer-core": "^24.0.0"
+    "puppeteer-core": "^24.0.0",
+    "web-push": "^3.6.7"
   }
 }

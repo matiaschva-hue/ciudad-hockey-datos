@@ -10,3 +10,4 @@ larry_torneos_*.json
 larry_data_*.json
 registros.json
 .claude/settings.local.json
+VAPID_PRIVATE.txt
