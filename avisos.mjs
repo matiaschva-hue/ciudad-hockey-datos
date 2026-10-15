@@ -24,6 +24,9 @@ const leer = async (c, d) => { const s = await getDoc(doc(db, c, d)); return s.e
 const paq = JSON.parse((await leer('ccba_cache', 'datos'))?.json || '{}'), E = paq.equipos || {}, P = Object.entries(paq.partidos || {}).map(([id, p]) => ({ id, ...p }));
 const perfiles = JSON.parse((await leer('ccba_perfiles', 'datos'))?.json || '{}').perfiles || [];
 const log = (await leer('ccba_push_log', 'datos'))?.enviados || {}, primeraVez = !Object.keys(log).length;
+const hechos = (await leer('ccba_config', 'bandeja'))?.hechos || {}; // lo que el CM ya subió (Ciudad Studio)
+// resultados de un día que todavía no se subieron (por rama, igual que en Para publicar)
+const sinSubir = (f) => P.filter((p) => p.fecha === f && p.gc != null && !hechos[`res|${f}|${(E[p.equipo] || {}).rama}`]);
 
 const equipoTxt = (id) => { const e = E[id] || {}; const tira = e.rama === 'damas' && e.div === 'segunda' ? `Segunda ${e.tira}` : `${e.rama === 'damas' ? 'Damas' : 'Caballeros'} ${e.tira}`; return `${tira} · ${DIVN[e.div] || ''}`; };
 const res = (p) => (p.gc > p.gr ? 'Ganó' : p.gc < p.gr ? 'Perdió' : 'Empató');
@@ -61,14 +64,15 @@ if (hora >= 8 && hora < 13) {
   const L = [], cs = cumples(hoy), hj = juegan(hoy), ra = P.filter((p) => p.fecha === ayer && p.gc != null);
   if (cs.length) L.push(`Cumple ${cs.map((p) => p.nombre).join(', ')}`);
   if (hj.length) L.push(`Hoy juegan ${hj.length}: ${hj.slice(0, 3).map(partidoTxt).join(' · ')}${hj.length > 3 ? '…' : ''}`);
-  if (ra.length && dow >= 2 && dow <= 6) L.push(`Resultados de ayer para subir (${ra.length})`);
+  const pa = sinSubir(ayer); if (pa.length) L.push(`Te quedaron pendientes los resultados de ayer (${pa.length})`);
   const po = P.filter((p) => p.gc == null && p.fecha > hoy && p.fecha <= dia(7) && (CLAVE.test(p.fechaN || '') || CLAVE.test(p.torneo || '')));
   if (po.length && [1, 3].includes(dow)) L.push(`Semana de play off: armá la previa (${[...new Set(po.map((p) => p.fechaN || p.torneo))].slice(0, 2).join(', ')})`);
   if (L.length) nuevo(`dia|${hoy}`, 'Para publicar hoy', L.join(' · '));
 }
 // 4) a la tarde: lo que viene mañana o el finde
 if (hora >= 18 && hora < 23) {
-  const L = [], cm = cumples(manana);
+  const L = [], cm = cumples(manana), ph = sinSubir(hoy);
+  if (ph.length) L.push(`Falta subir los resultados de hoy (${ph.length})`);
   if (dow === 4 || dow === 5) { // jueves y viernes: el finde
     const fin = (dow === 4 ? [1, 2, 3] : [1, 2]).flatMap((d) => juegan(dia(d))); // jueves: vie+sáb+dom · viernes: sáb+dom
     if (fin.length) L.push(`Este finde juegan ${fin.length} partidos: armá el posteo de próximos`);
