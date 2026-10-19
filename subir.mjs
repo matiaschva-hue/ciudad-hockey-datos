@@ -85,7 +85,14 @@ if (fs.existsSync(plFile)) {
     for (const j of P.jugadores) jugadores[`lp-${eq}-${slug(j.nombre)}`] = { equipo: eq, numero: j.numero, nombre: j.nombre, puesto: '', capitan: j.capitan, pj: j.pj, goles: j.goles, fuente: 'larry' };
     // "Apellido, Nombre" → "Nombre Apellido"; solo quien figura en al menos 2 planillas (o el único de su rol)
     const st = P.staff.filter((s, i, a) => s.n >= 2 || a.filter(x => x.rol === s.rol).length === 1);
-    equipos[eq].cuerpo = st.map(s => ({ rol: ROL[s.rol] || s.rol, nombre: s.nombre.split(',').map(x => x.trim()).reverse().join(' ') }));
+    if (st.length) equipos[eq].cuerpo = st.map(s => ({ rol: ROL[s.rol] || s.rol, nombre: s.nombre.split(',').map(x => x.trim()).reverse().join(' ') }));
+    else if (prev?.equipos?.[eq]?.cuerpo?.length) console.log('⚠', eq, 'sin cuerpo técnico en las planillas → queda el anterior');
+  }
+  // equipo que esta vez quedó sin plantel (planillas que no se pudieron leer): queda el plantel anterior
+  if (Object.keys(jugadores).length) for (const eq of Object.keys(equipos)) {
+    if (Object.values(jugadores).some((j) => j.equipo === eq)) continue;
+    const antes = Object.entries(prev?.jugadores || {}).filter(([, j]) => j.equipo === eq);
+    if (antes.length) { console.log('⚠', eq, 'sin jugadores en las planillas → quedan los', antes.length, 'anteriores'); for (const [id, j] of antes) jugadores[id] = j; }
   }
 }
 // Menores que juegan para arriba: si un/a jugador/a figura en Quinta, Sexta o Séptima y también en una división

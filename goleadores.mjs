@@ -34,6 +34,8 @@ try {
     }
     // la pestaña dice "CIUDAD" para todas las tiras: en damas la tira sale del torneo; caballeros A y B comparten torneo
     // y la tira sale de las planillas (quien jugó en las dos aparece en dos filas, una por equipo)
+    // sin planteles de ninguna de las dos tiras no se puede repartir: quedan los goleadores anteriores (subir.mjs)
+    if (t.rama === 'caballeros' && !PL[`caballeros-${DIV[t.cat]}-a`]?.jugadores?.length && !PL[`caballeros-${DIV[t.cat]}-b`]?.jugadores?.length) { console.log('⚠', t.cat, 'sin planteles de A ni B: no se reparten sus goleadores'); continue; }
     if (t.rama === 'caballeros') filas = repartirTiras(filas, { a: PL[`caballeros-${DIV[t.cat]}-a`]?.jugadores, b: PL[`caballeros-${DIV[t.cat]}-b`]?.jugadores });
     for (const { apellidoNombre: an, goles, pj, rank, tira } of filas) {
       const [ap, no] = an.split(',').map(s => s.trim());

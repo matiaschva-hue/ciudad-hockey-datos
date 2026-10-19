@@ -29,11 +29,13 @@ export function parsear(txt) {
   for (const l of L.slice(iHead + 1)) {
     if (/^\s*Arbitros|Juez de mesa|Observaciones/.test(l)) break;
     for (const [lado, s] of [['local', l.slice(0, cut)], ['visitante', l.slice(cut)]]) {
+      // cuerpo técnico ("T  Apellido, Nombre"): va primero porque su renglón también puede traer carnet y no es un jugador
+      const t = /^\s*([TAPM])\s+([^,\d]+,\s*[\p{L}' .-]+?)(?=\s{2,}|\s+\d|\s*$)/u.exec(s);
+      if (t) { lados[lado].staff.push({ rol: t[1], nombre: t[2].trim() }); continue; }
       const m = /^\s*(\d{1,3})\s+(\(C\)\s+)?([\p{L}' .-]+?)(?=\s{2,}|\s+\d{5,}|\s*$)/u.exec(s);
       if (m) nombres[lado].push({ numero: m[1], nombre: m[3].trim(), capitan: !!m[2] });
       const c = /(\d{5,})\s+(\d+|-)(?=\s|$)/.exec(s); // carnet y goles (las tarjetas a veces vienen pegadas: "- ---")
       if (c) stats[lado].push({ registro: c[1], goles: c[2] !== '-' ? +c[2] : 0 });
-      if (!m && !c) { const t = /^\s*([TAPM])\s+([^,]+,\s*[\p{L}' .-]+?)\s*$/u.exec(s.trimStart().replace(/\s{2,}.*$/, '')); if (t) lados[lado].staff.push({ rol: t[1], nombre: t[2].trim() }); }
     }
   }
   for (const lado of ['local', 'visitante']) {

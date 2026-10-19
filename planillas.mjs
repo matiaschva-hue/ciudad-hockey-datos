@@ -32,7 +32,7 @@ async function links() {
         return [...new Set(got)];
       });
       out.push({ ...t, planillas: urls });
-      console.log(t.rama, t.cat, t.nombre, '→', urls.length, 'planillas');
+      console.log(t.rama, t.cat, t.nombre, '→', urls.length, 'planillas', urls.length ? '' : '⚠');
     }
   } finally { await browser.close(); }
   fs.writeFileSync(new URL('planillas_links.json', DIR), JSON.stringify(out, null, 1));
@@ -51,6 +51,7 @@ function leer() {
       const id = `${t.rama}-${DIV[t.cat]}-${tira.toLowerCase()}`;
       const E = equipos[id] ||= { jugadores: {}, staff: {}, planillas: 0 };
       E.planillas++;
+      if (!p.lados[lado].jug.length) E.vacias = (E.vacias || 0) + 1;
       golesPartido[`${id}|${p.fecha}|${lado === 'local' ? p.visitante : p.local}`] = p.lados[lado].jug.filter(j => j.goles > 0).map(({ nombre, numero, goles }) => ({ nombre, numero, goles }));
       for (const j of p.lados[lado].jug) {
         // número de registro AHBA: va aparte (registros.json, privado), nunca a planteles.json ni a la web
@@ -70,7 +71,8 @@ function leer() {
     const limTxt = lim.toISOString().slice(0, 10);
     const jug = Object.values(E.jugadores).filter(j => j.pj >= 2 || j.ultima >= limTxt);
     out[id] = { planillas: E.planillas, jugadores: jug.sort((a, b) => +a.numero - +b.numero), staff: Object.values(E.staff).sort((a, b) => b.n - a.n) };
-    console.log(id, E.planillas, 'planillas →', out[id].jugadores.length, 'jugadores ·', out[id].staff.map(s => s.rol + ' ' + s.nombre).slice(0, 3).join(' / '));
+    // solo cantidades: el repo es público y el log de Actions se ve
+    console.log(id, E.planillas, 'planillas →', out[id].jugadores.length, 'jugadores ·', out[id].staff.length, 'del cuerpo técnico', E.vacias ? `· ⚠ ${E.vacias} planillas sin jugadores leídos` : '');
   }
   fs.writeFileSync(new URL('planteles.json', DIR), JSON.stringify(out, null, 1));
   fs.writeFileSync(new URL('registros.json', DIR), JSON.stringify(registros, null, 1));
