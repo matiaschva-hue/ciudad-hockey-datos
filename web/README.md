@@ -26,3 +26,15 @@ Estos dos archivos los muestran; no dependen de ningún framework.
 
 Para enlazar desde la lista de jugadores de un equipo: cada perfil tiene `rama` y `nombre`, y sus
 `temporadas` del año actual tienen `div`, `tira` y `numero`, igual que los jugadores del paquete.
+
+## Fotos de las leyendas (`leyendas-fotos.js`)
+
+Las fotos siguen en la carpeta de la web en la PC. Desde Ciudad Studio se puede subir una foto nueva para una leyenda:
+se achica en el navegador (lado mayor 900 px, JPEG, ~100-200 KB) y se guarda en Firestore `ccba_leyendas_fotos/<id>`.
+La página de leyendas muestra la nueva si existe y, si no, la de la PC. "Volver a la original" la borra de Firestore;
+"Descargar" baja la nueva para guardarla también en la carpeta de la PC cuando se quiera.
+
+1. En la página de leyendas, a cada foto agregarle su id: `<img src="img/leyendas/juan-perez.jpg" data-leyenda="juan-perez">`
+   y al cargar la página: `aplicarFotos(await cargarFotosLeyendas(db));`
+2. En Ciudad Studio, junto a cada leyenda: `el.append(botonCambiarFoto(db, 'juan-perez', { por: usuario.email }));`
+   (mostrarlo solo a quienes administran Studio).
