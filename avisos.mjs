@@ -14,7 +14,7 @@ if (PRIVADA) webpush.setVapidDetails('https://ciudad-hockey.web.app', PUBLICA, P
 const db = getFirestore(initializeApp({ apiKey: 'AIzaSyB4xqW0rHESTovZqGQUIsUR07XBekqjuX0', authDomain: 'muni-hockey.firebaseapp.com', projectId: 'muni-hockey' }));
 
 // fechas en hora argentina
-const ahora = new Date(Date.now() - 3 * 36e5), hora = process.env.HORA ? +process.env.HORA : ahora.getUTCHours(), dow = ahora.getUTCDay(); // HORA=9 para probar
+const ahora = new Date(Date.now() - 3 * 36e5), hora = process.env.HORA ? +process.env.HORA : ahora.getUTCHours(), minuto = process.env.HORA ? 47 : ahora.getUTCMinutes(), dow = ahora.getUTCDay(); // HORA=9 para probar
 const dia = (d) => new Date(ahora.getTime() + d * 864e5).toISOString().slice(0, 10), hoy = dia(0), ayer = dia(-1), manana = dia(1);
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DIVN = { primera: 'Primera', intermedia: 'Intermedia', segunda: 'Segunda', cuarta: 'Cuarta', quinta: 'Quinta', sexta: 'Sexta', septima: 'Séptima' };
@@ -43,7 +43,7 @@ const golesTxt = (p) => (p.goleadores || []).slice().sort((a, b) => b.goles - a.
 const partidoTxt = (p) => `${equipoTxt(p.equipo)}${p.hora ? ' ' + p.hora + ' h' : ''} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`;
 
 const avisos = []; // { clave, titulo, texto, url }
-const nuevo = (clave, titulo, texto, url = './#/redes') => { if (!log[clave]) avisos.push({ clave, titulo, texto, url }); };
+const nuevo = (clave, titulo, texto, url = './#/redes') => { if (![].concat(clave).every((k) => log[k])) avisos.push({ clave, titulo, texto, url }); };
 
 // 1) pedidos para usar Ciudad Studio
 try {
@@ -54,7 +54,7 @@ try {
 // 2) resultados nuevos (con goleadores si la planilla ya está)
 const nuevosRes = P.filter((p) => p.fuente === 'larry' && p.gc != null && p.fecha >= dia(-2) && p.fecha <= hoy && !log[`res|${p.id}`]);
 if (nuevosRes.length > 4) avisos.push({ clave: nuevosRes.map((p) => `res|${p.id}`), titulo: `Resultados · ${nuevosRes.length} partidos`, texto: nuevosRes.slice(0, 6).map((p) => `${equipoTxt(p.equipo)}: ${p.gc}-${p.gr} ${p.rival}`).join(' · '), url: './#/redes' });
-else for (const p of nuevosRes) nuevo(`res|${p.id}`, `${res(p)} ${equipoTxt(p.equipo)} · ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Armá el posteo de resultado.`, `./#/p/${p.id}`);
+else for (const p of nuevosRes) nuevo(`res|${p.id}`, `Terminó: ${res(p)} ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Armá el posteo de resultado.`, `./#/p/${p.id}`);
 
 // fotos nuevas de Hockey MUNI HD para revisar en Ciudad Studio (las baja la rutina de la compu del CM)
 try {
@@ -71,13 +71,17 @@ const juegan = (f) => P.filter((p) => p.fecha === f && p.gc == null && !p.suspen
 // 3) a la mañana: qué publicar hoy
 if (hora >= 8 && hora < 13) {
   const L = [], cs = cumples(hoy), hj = juegan(hoy), ra = P.filter((p) => p.fecha === ayer && p.gc != null);
-  if (cs.length) L.push(`Cumple ${cs.map((p) => p.nombre).join(', ')}`);
+  if (cs.length) nuevo(`cum|${hoy}`, `🎂 Hoy ${cs.length > 1 ? 'cumplen' : 'cumple'} ${cs.map((p) => p.nombre).join(', ')}`, 'Armá el posteo de cumpleaños en Ciudad Studio (ya tiene su foto si la cargaste).');
   if (hj.length) L.push(`Hoy juegan ${hj.length}: ${hj.slice(0, 3).map(partidoTxt).join(' · ')}${hj.length > 3 ? '…' : ''}`);
   const pa = sinSubir(ayer); if (pa.length) L.push(`Te quedaron pendientes los resultados de ayer (${pa.length})`);
   const po = P.filter((p) => p.gc == null && p.fecha > hoy && p.fecha <= dia(7) && (CLAVE.test(p.fechaN || '') || CLAVE.test(p.torneo || '')));
   if (po.length && [1, 3].includes(dow)) L.push(`Semana de play off: armá la previa (${[...new Set(po.map((p) => p.fechaN || p.torneo))].slice(0, 2).join(', ')})`);
   if (L.length) nuevo(`dia|${hoy}`, 'Para publicar hoy', L.join(' · '));
 }
+// 3b) antes de cada partido: entre 15 y 75 minutos antes de que arranque (los del mismo horario van juntos)
+{ const ya = hora * 60 + minuto, porHora = {};
+  for (const p of juegan(hoy)) { if (!/^d{1,2}:d{2}/.test(p.hora || '')) continue; const [h, m] = p.hora.split(':').map(Number), falta = h * 60 + m - ya; if (falta >= 15 && falta <= 75) (porHora[p.hora] ||= []).push(p); }
+  for (const [h, ps] of Object.entries(porHora)) nuevo(ps.map((p) => `pre|${p.id}`), `A las ${h} h juega Ciudad${ps.length > 1 ? ` (${ps.length} partidos)` : ''}`, ps.slice(0, 3).map((p) => `${equipoTxt(p.equipo)} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`).join(' · ') + '. Subí la previa o la historia de «hoy juega».', ps.length === 1 ? `./#/p/${ps[0].id}` : './#/redes'); }
 // 4) a la tarde: lo que viene mañana o el finde
 if (hora >= 18 && hora < 23) {
   const L = [], cm = cumples(manana), ph = sinSubir(hoy);
