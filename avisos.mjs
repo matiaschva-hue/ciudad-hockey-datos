@@ -54,7 +54,12 @@ try {
 // 2) resultados nuevos (con goleadores si la planilla ya está)
 const nuevosRes = P.filter((p) => p.fuente === 'larry' && p.gc != null && p.fecha >= dia(-2) && p.fecha <= hoy && !log[`res|${p.id}`]);
 if (nuevosRes.length > 4) avisos.push({ clave: nuevosRes.map((p) => `res|${p.id}`), titulo: `Resultados · ${nuevosRes.length} partidos`, texto: nuevosRes.slice(0, 6).map((p) => `${equipoTxt(p.equipo)}: ${p.gc}-${p.gr} ${p.rival}`).join(' · '), url: './#/redes' });
-else for (const p of nuevosRes) nuevo(`res|${p.id}`, `Terminó: ${res(p)} ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Armá el posteo de resultado.`, `./#/p/${p.id}`);
+else for (const p of nuevosRes) nuevo(golesTxt(p) ? [`res|${p.id}`, `gol|${p.id}`] : `res|${p.id}`, `Terminó: ${res(p)} ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Armá el posteo de resultado.`, `./#/p/${p.id}`);
+
+// goles: cuando LarrySport sube la planilla después del resultado, segundo aviso con los goleadores
+{ const conGoles = P.filter((p) => p.fuente === 'larry' && p.gc != null && p.fecha >= dia(-3) && (p.goleadores || []).length && (log[`res|${p.id}`] || nuevosRes.includes(p)) && !log[`gol|${p.id}`] && !(nuevosRes.length <= 4 && nuevosRes.includes(p)));
+  if (conGoles.length > 4) avisos.push({ clave: conGoles.map((p) => `gol|${p.id}`), titulo: `Planillas · goles de ${conGoles.length} partidos`, texto: conGoles.slice(0, 4).map((p) => `${equipoTxt(p.equipo)}: ${golesTxt(p)}`).join(' · '), url: './#/redes' });
+  else for (const p of conGoles) nuevo(`gol|${p.id}`, `Goles · ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ya está la planilla: ${golesTxt(p)}. Armá el posteo de resultado con los goleadores.`, `./#/p/${p.id}`); }
 
 // fotos nuevas de Hockey MUNI HD para revisar en Ciudad Studio (las baja la rutina de la compu del CM)
 try {
