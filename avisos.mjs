@@ -103,7 +103,7 @@ if (hora >= 18 && hora < 23) {
 
 // envío
 const claves = (a) => (Array.isArray(a.clave) ? a.clave : [a.clave]);
-if (primeraVez && !process.env.PRUEBA) { console.log('Avisos: primera corrida, se marca lo actual como enviado sin mandar nada.'); avisos.splice(0, avisos.length, ...avisos.filter((a) => /^acc\|/.test(claves(a)[0]))); for (const p of nuevosRes) log[`res|${p.id}`] = hoy; }
+if (primeraVez && !process.env.PRUEBA) { console.log('Avisos: primera corrida, se marca lo actual como enviado sin mandar nada.'); for (const a of avisos) if (!/^acc\|/.test(claves(a)[0])) for (const k of claves(a)) log[k] = hoy; avisos.splice(0, avisos.length, ...avisos.filter((a) => /^acc\|/.test(claves(a)[0]))); for (const p of P.filter((p) => p.gc != null && p.fecha >= dia(-3))) { log[`res|${p.id}`] = hoy; log[`gol|${p.id}`] = hoy; } }
 const subs = (await getDocs(collection(db, 'ccba_push'))).docs;
 console.log(`Avisos: ${avisos.length} para mandar a ${subs.length} dispositivo(s)`);
 for (const a of avisos) {
