@@ -3,12 +3,12 @@ on:
   schedule:
     # GitHub demora o saltea corridas programadas (a veces horas): por eso hay muchas, con minutos sueltos.
     # Las de horario de partido van en modo RÁPIDO (solo torneos con partidos ayer/hoy/mañana, ~1-2 min).
-    # sáb y dom: cada 15 min de 10 a 23:59 h (hora argentina = UTC-3)
-    - cron: '7,22,37,52 13-23 * * 6,0'
-    - cron: '7,22,37,52 0-2 * * 0,1'
-    # lunes a viernes (partidos entre semana y feriados): cada 15 min de 17 a 23:59 h
-    - cron: '7,22,37,52 20-23 * * 1-5'
-    - cron: '7,22,37,52 0-2 * * 2-6'
+    # sáb y dom: cada 10 min de 10 a 23:59 h (hora argentina = UTC-3)
+    - cron: '2,12,22,32,42,52 13-23 * * 6,0'
+    - cron: '2,12,22,32,42,52 0-2 * * 0,1'
+    # lunes a viernes (partidos entre semana y feriados): cada 10 min de 17 a 23:59 h
+    - cron: '2,12,22,32,42,52 20-23 * * 1-5'
+    - cron: '2,12,22,32,42,52 0-2 * * 2-6'
     # pasada completa (todos los torneos): todos los días 6:41 h
     - cron: '41 9 * * *'
     # avisos al celular (pedidos de acceso, qué publicar): cada hora de 8 a 23 h, sin leer LarrySport

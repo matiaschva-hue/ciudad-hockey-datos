@@ -42,11 +42,13 @@ function apellido(nombre, rama) {
 const golesTxt = (p) => (p.goleadores || []).slice().sort((a, b) => b.goles - a.goles).map((j) => apellido(j.nombre, (E[p.equipo] || {}).rama) + (j.goles > 1 ? ` ×${j.goles}` : '')).join(', ');
 const partidoTxt = (p) => `${equipoTxt(p.equipo)}${p.hora ? ' ' + p.hora + ' h' : ''} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`;
 
+// por ahora (pedido del CM) solo se avisa cuando termina un partido y cuando llega la planilla; AVISOS_TODOS=1 vuelve a mandar el resto
+const TODOS = !!process.env.AVISOS_TODOS;
 const avisos = []; // { clave, titulo, texto, url }
 const nuevo = (clave, titulo, texto, url = './#/redes') => { if (![].concat(clave).every((k) => log[k])) avisos.push({ clave, titulo, texto, url }); };
 
 // 1) pedidos para usar Ciudad Studio
-try {
+if (TODOS) try {
   const s = await getDocs(query(collection(db, 'ccba_studio_usuarios'), where('estado', '==', 'pendiente')));
   for (const d of s.docs) { const u = d.data(); nuevo(`acc|${d.id}`, 'Pedido para Ciudad Studio', `${u.nombre || u.email} quiere armar posteos. Tocá para habilitarlo.`); }
 } catch (e) { console.log('pedidos:', e.message); }
@@ -62,7 +64,7 @@ else for (const p of nuevosRes) nuevo(golesTxt(p) ? [`res|${p.id}`, `gol|${p.id}
   else for (const p of conGoles) nuevo(`gol|${p.id}`, `Goles · ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ya está la planilla: ${golesTxt(p)}. Armá el posteo de resultado con los goleadores.`, `./#/p/${p.id}`); }
 
 // fotos nuevas de Hockey MUNI HD para revisar en Ciudad Studio (las baja la rutina de la compu del CM)
-try {
+if (TODOS) try {
   const fotos = await (await fetch('https://ciudad-hockey.web.app/fotos.json?t=' + Date.now())).json(), rev = (await leer('ccba_config', 'fotos')) || {};
   const pend = fotos.filter((f) => f.pendiente && !(rev.ok || {})[f.src] && !(rev.no || {})[f.src]);
   if (pend.length) { const ult = pend.map((f) => f.nueva || '').sort().pop();
@@ -74,7 +76,7 @@ const cumples = (f) => perfiles.filter((p) => p.nacimiento && p.nacimiento.slice
 const juegan = (f) => P.filter((p) => p.fecha === f && p.gc == null && !p.suspendido);
 
 // 3) a la mañana: qué publicar hoy
-if (hora >= 8 && hora < 13) {
+if (TODOS && hora >= 8 && hora < 13) {
   const L = [], cs = cumples(hoy), hj = juegan(hoy), ra = P.filter((p) => p.fecha === ayer && p.gc != null);
   if (cs.length) nuevo(`cum|${hoy}`, `🎂 Hoy ${cs.length > 1 ? 'cumplen' : 'cumple'} ${cs.map((p) => p.nombre).join(', ')}`, 'Armá el posteo de cumpleaños en Ciudad Studio (ya tiene su foto si la cargaste).');
   if (hj.length) L.push(`Hoy juegan ${hj.length}: ${hj.slice(0, 3).map(partidoTxt).join(' · ')}${hj.length > 3 ? '…' : ''}`);
@@ -84,11 +86,11 @@ if (hora >= 8 && hora < 13) {
   if (L.length) nuevo(`dia|${hoy}`, 'Para publicar hoy', L.join(' · '));
 }
 // 3b) antes de cada partido: entre 15 y 75 minutos antes de que arranque (los del mismo horario van juntos)
-{ const ya = hora * 60 + minuto, porHora = {};
+if (TODOS) { const ya = hora * 60 + minuto, porHora = {};
   for (const p of juegan(hoy)) { if (!/^d{1,2}:d{2}/.test(p.hora || '')) continue; const [h, m] = p.hora.split(':').map(Number), falta = h * 60 + m - ya; if (falta >= 15 && falta <= 75) (porHora[p.hora] ||= []).push(p); }
   for (const [h, ps] of Object.entries(porHora)) nuevo(ps.map((p) => `pre|${p.id}`), `A las ${h} h juega Ciudad${ps.length > 1 ? ` (${ps.length} partidos)` : ''}`, ps.slice(0, 3).map((p) => `${equipoTxt(p.equipo)} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`).join(' · ') + '. Subí la previa o la historia de «hoy juega».', ps.length === 1 ? `./#/p/${ps[0].id}` : './#/redes'); }
 // 4) a la tarde: lo que viene mañana o el finde
-if (hora >= 18 && hora < 23) {
+if (TODOS && hora >= 18 && hora < 23) {
   const L = [], cm = cumples(manana), ph = sinSubir(hoy);
   if (ph.length) L.push(`Falta subir los resultados de hoy (${ph.length})`);
   if (dow === 4 || dow === 5) { // jueves y viernes: el finde
