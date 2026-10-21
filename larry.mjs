@@ -20,7 +20,7 @@ const modo = process.argv[2] || 'todo';
 const TEMPORADA = process.env.TEMPORADA || '';
 const RAPIDO = !!process.env.RAPIDO && !TEMPORADA;
 const isoDia = (d) => new Date(Date.now() + d * 864e5 - 3 * 36e5).toISOString().slice(0, 10); // día en hora argentina (d = -1 ayer, 0 hoy, 1 mañana)
-const DIAS_PLANILLA = 3; // partidos jugados en los últimos 3 días: se lee su planilla para saber quién hizo los goles
+const DIAS_PLANILLA = +process.env.DIAS_PLANILLA || (process.env.RAPIDO ? 3 : 10); // planillas de los últimos días: en la corrida completa 10 (la AHBA a veces sube la planilla días después)
 const sufijo = TEMPORADA ? '_' + TEMPORADA : '';
 
 async function hacerClick(pg, fn, arg, que) {
@@ -128,7 +128,7 @@ async function leerTorneo(pg, t) {
         if (b.disabled) return; let e = b;
         for (let k = 0; k < 8 && e; k++) { e = e.parentElement; if ((e?.innerText.match(/\n/g) || []).length >= 3) break; }
         const txt = (e?.innerText || '').split('\n').map(x => x.trim()).filter(Boolean).join('|');
-        if (!vistos.has(txt)) { vistos.add(txt); out.push({ i, txt }); }
+        const f = out.find(x => x.txt === txt); if (f) f.is.push(i); else { vistos.add(txt); out.push({ i, is: [i], txt }); }
       });
       return out;
     });
@@ -136,11 +136,18 @@ async function leerTorneo(pg, t) {
       const [fe, loc, a, b, vis] = f.txt.split('|'), m = /^\S+ (\d{1,2}) (\w{3,4})/.exec(fe || '');
       if (!m || MESN[m[2]] === undefined || !/^\d+/.test(a || '') || !/^\d+/.test(b || '')) continue;
       const fecha = `${anio}-${pad(MESN[m[2]] + 1)}-${pad(m[1])}`; if (fecha < desde) continue;
-      const p = partidos.find(x => x.fecha === fecha && limpia(x.local) === limpia(loc) && limpia(x.visitante) === limpia(vis)); if (!p) continue;
+      const p = partidos.find(x => x.fecha === fecha && limpia(x.local) === limpia(loc) && limpia(x.visitante) === limpia(vis));
+      if (!p) { if (process.env.DEBUG) console.log('   sin partido para la planilla', fecha, loc, vis, '· del día:', partidos.filter(x => x.fecha === fecha).map(x => x.local + '-' + x.visitante).join(', ')); continue; }
       try {
-        const url = await pg.evaluate(async (i) => { let u = ''; const o = window.open; window.open = (x) => { u = x; return null; };
-          document.querySelectorAll('main button[title="Ver planilla"]')[i].click(); await new Promise(r => setTimeout(r, 1200)); window.open = o; return u; }, f.i);
-        if (!url) continue;
+        // cada fila tiene dos botones (uno por diseño de pantalla): se prueba cada uno y se espera hasta 5 s a que abra el PDF
+        let url = '';
+        for (const i of f.is) {
+          url = await pg.evaluate(async (i) => { let u = ''; const o = window.open; window.open = (x) => { u = x; return null; };
+            const bt = document.querySelectorAll('main button[title="Ver planilla"]')[i]; bt?.scrollIntoView({ block: 'center' }); bt?.click();
+            for (let k = 0; k < 25 && !u; k++) await new Promise(r => setTimeout(r, 200)); window.open = o; return u; }, i);
+          if (url) break;
+        }
+        if (!url) { if (process.env.DEBUG) console.log('   la planilla no abrió', fecha, loc, vis, 'botón', f.i); continue; }
         const g = golesCiudad(parsear(leerPdf(url)));
         if (g.local) p.golesLocal = g.local; if (g.visitante) p.golesVis = g.visitante;
         console.log('   planilla', fecha, loc, a, '-', b, vis, '→', [...(g.local || []), ...(g.visitante || [])].map(j => j.nombre + (j.goles > 1 ? ' x' + j.goles : '')).join(', ') || 'sin goles de Ciudad');
@@ -185,6 +192,7 @@ await pg.setViewport({ width: 1280, height: 1000 });
 try {
   let torneos = modo === 'leer' ? JSON.parse(fs.readFileSync(new URL(`larry_torneos${sufijo}.json`, DIR), 'utf8')) : await descubrir(pg);
   let saltear = [];
+  if (process.env.SOLO) torneos = torneos.filter(t => t.url.includes(process.env.SOLO)); // diagnóstico: un solo torneo
   if (RAPIDO) {
     const db = getFirestore(initializeApp({ apiKey: 'AIzaSyB4xqW0rHESTovZqGQUIsUR07XBekqjuX0', authDomain: 'muni-hockey.firebaseapp.com', projectId: 'muni-hockey' }));
     const s = await getDoc(doc(db, 'ccba_cache', 'datos')), prev = s.exists() ? JSON.parse(s.data().json) : null;
