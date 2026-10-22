@@ -5,6 +5,7 @@
 import webpush from 'web-push';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { fechasDe } from './fechas_importantes.mjs';
 
 const SECO = process.argv.includes('--seco');
 const PUBLICA = 'BA79sCqx1e-o3MMbC_P1kirSLPC3MEb3_5HFrJyOj7ihjvJblCBYg8k-0Nus0aoHEP-E7aRPNSZPAEyJ7rtCPs8';
@@ -87,7 +88,7 @@ if (TODOS && hora >= 8 && hora < 13) {
 }
 // 3b) antes de cada partido: entre 15 y 75 minutos antes de que arranque (los del mismo horario van juntos)
 if (TODOS) { const ya = hora * 60 + minuto, porHora = {};
-  for (const p of juegan(hoy)) { if (!/^d{1,2}:d{2}/.test(p.hora || '')) continue; const [h, m] = p.hora.split(':').map(Number), falta = h * 60 + m - ya; if (falta >= 15 && falta <= 75) (porHora[p.hora] ||= []).push(p); }
+  for (const p of juegan(hoy)) { if (!/^\d{1,2}:\d{2}/.test(p.hora || '')) continue; const [h, m] = p.hora.split(':').map(Number), falta = h * 60 + m - ya; if (falta >= 15 && falta <= 75) (porHora[p.hora] ||= []).push(p); }
   for (const [h, ps] of Object.entries(porHora)) nuevo(ps.map((p) => `pre|${p.id}`), `A las ${h} h juega Ciudad${ps.length > 1 ? ` (${ps.length} partidos)` : ''}`, ps.slice(0, 3).map((p) => `${equipoTxt(p.equipo)} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`).join(' · ') + '. Subí la previa o la historia de «hoy juega».', ps.length === 1 ? `./#/p/${ps[0].id}` : './#/redes'); }
 // 4) a la tarde: lo que viene mañana o el finde
 if (TODOS && hora >= 18 && hora < 23) {
@@ -101,6 +102,25 @@ if (TODOS && hora >= 18 && hora < 23) {
   const clave = juegan(manana).filter((p) => CLAVE.test(p.fechaN || '') || CLAVE.test(p.torneo || ''));
   if (clave.length) L.push(`Partido clave mañana: ${clave[0].fechaN || clave[0].torneo}`);
   if (L.length) nuevo(`noche|${hoy}`, 'Para preparar', L.join(' · '));
+}
+
+// 5) cumpleaños (plantel superior y jugadores/as destacados/as) y fechas importantes: a la mañana del día y la noche anterior (pedido del CM, 22/10)
+let leyendas = []; // de la web: fechas de nacimiento (NAC_LEY) y nombres (LEY("id", "Nombre"))
+try { const js = await (await fetch('https://ciudad-hockey.web.app/app.js?t=' + Date.now())).text(), nac = JSON.parse((/const NAC_LEY = (\{[^}]*\})/.exec(js) || [])[1] || '{}');
+  leyendas = [...js.matchAll(/LEY\("([a-z-]+)", "([^"]+)"/g)].filter((m) => nac[m[1]]).map((m) => ({ id: m[1], nombre: m[2], nacimiento: nac[m[1]] })); } catch (e) { console.log('leyendas:', e.message); }
+const sinTilde = (s) => pl(s).split(/\s+/);
+const cumpleDe = (f) => { const ls = leyendas.filter((l) => l.nacimiento.slice(5) === f.slice(5)), lsN = ls.map((l) => sinTilde(l.nombre));
+  const ps = cumples(f).filter((p) => !lsN.some((L) => L.every((w) => sinTilde(p.nombre).includes(w)))); // quien es leyenda no se repite
+  return [...ls.map((l) => `${l.nombre} (destacado/a del club)`), ...ps.map((p) => p.nombre)]; };
+if (hora >= 8 && hora < 13) {
+  const cs = cumpleDe(hoy), fs = fechasDe(hoy);
+  if (cs.length) nuevo(`cum|${hoy}`, `🎂 Hoy ${cs.length > 1 ? 'cumplen' : 'cumple'} ${cs.join(', ')}`, 'Armá el posteo de cumpleaños en Ciudad Studio.');
+  for (const x of fs) nuevo(`fecha|${hoy}|${x.titulo}`, `📅 Hoy: ${x.titulo}`, `Idea: ${x.idea}.`);
+}
+if (hora >= 19 && hora < 23) {
+  const cs = cumpleDe(manana), fs = fechasDe(manana), L = [];
+  if (cs.length) L.push(`cumple ${cs.join(', ')}`); for (const x of fs) L.push(`${x.titulo} (${x.idea})`);
+  if (L.length) nuevo(`manana|${hoy}`, '🗓️ Mañana', L.join(' · ') + '. Dejalo preparado en Ciudad Studio.');
 }
 
 // envío
