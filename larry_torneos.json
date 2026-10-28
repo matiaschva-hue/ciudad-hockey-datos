@@ -104,6 +104,12 @@
  {
   "rama": "damas",
   "cat": "Sexta",
+  "nombre": "Play Off",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3Zhdl0="
+ },
+ {
+  "rama": "damas",
+  "cat": "Sexta",
   "nombre": "Damas A",
   "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3VlfVc="
  },
@@ -158,6 +164,12 @@
  {
   "rama": "caballeros",
   "cat": "Primera",
+  "nombre": "Cruce Caballeros A",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ZhdlA="
+ },
+ {
+  "rama": "caballeros",
+  "cat": "Primera",
   "nombre": "Caballeros A",
   "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ViflQ="
  },
@@ -176,8 +188,20 @@
  {
   "rama": "caballeros",
   "cat": "Quinta",
+  "nombre": "Play Off",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ZhdlM="
+ },
+ {
+  "rama": "caballeros",
+  "cat": "Quinta",
   "nombre": "Caballeros A",
   "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ViflY="
+ },
+ {
+  "rama": "caballeros",
+  "cat": "Sexta",
+  "nombre": "Play Off",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3Zhdlw="
  },
  {
   "rama": "caballeros",
