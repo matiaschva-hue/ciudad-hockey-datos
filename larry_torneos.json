@@ -43,6 +43,12 @@
  },
  {
   "rama": "damas",
+  "cat": "Primera",
+  "nombre": "Repechaje C/D",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3Zhd1E="
+ },
+ {
+  "rama": "damas",
   "cat": "Intermedia",
   "nombre": "Damas A",
   "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3VlfVU="
@@ -76,6 +82,12 @@
   "cat": "Segunda",
   "nombre": "Segunda B",
   "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3VidlM="
+ },
+ {
+  "rama": "damas",
+  "cat": "Segunda",
+  "nombre": "Repechaje 2da. A/B",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3Zhd1w="
  },
  {
   "rama": "damas",
@@ -164,8 +176,8 @@
  {
   "rama": "caballeros",
   "cat": "Primera",
-  "nombre": "Cruce Caballeros A",
-  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ZhdlA="
+  "nombre": "Play Off",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3Zhd1Q="
  },
  {
   "rama": "caballeros",
@@ -214,5 +226,11 @@
   "cat": "Septima",
   "nombre": "Caballeros A",
   "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ViflA="
+ },
+ {
+  "rama": "caballeros",
+  "cat": "Primera",
+  "nombre": "Cruce Caballeros A",
+  "url": "https://tournamenttracker.buenosaireshockey.ar/RUdVX3ZhdlA="
  }
 ]

@@ -28,6 +28,8 @@ const golesDe = (eq, fecha, rival) => { const ks = Object.keys(golesPl).filter(k
 for (const t of data.torneos) {
   const div = DIV[t.cat]; if (!div) continue;
   const copa = /copa/i.test(t.nombre);
+  // play off / repechaje: sus partidos se suman, pero el torneo y la tabla del equipo siguen siendo los de la fase regular
+  const fase = /play ?off|repechaje|reclasif|promoci/i.test(t.nombre);
   const idsTorneo = new Set();
   for (const p of t.partidos) {
     const cl = esCiudad(p.local), cv = esCiudad(p.visitante);
@@ -46,10 +48,10 @@ for (const t of data.torneos) {
       const gol = (esLocal ? p.golesLocal : p.golesVis) || golesDe(eq, p.fecha, rival) || prev?.partidos?.[id]?.goleadores;
       if (gol && p.gl != null) partidos[id].goleadores = gol;
       if (!equipos[eq]) equipos[eq] = { rama: t.rama, div, tira, larry: true };
-      if (!copa) equipos[eq].torneo = t.nombre;
+      if (!copa && !fase) equipos[eq].torneo = t.nombre;
     }
   }
-  if (!copa && t.tabla.length) for (const eq of idsTorneo) tablas[eq] = { filas: t.tabla.map(f => ({ equipo: f.equipo, pj: f.pj, pg: f.pg, pe: f.pe, pp: f.pp, gf: f.gf, gc: f.gc, pts: f.pts })), torneo: t.nombre, actualizada, fuente: 'larry' };
+  if (!copa && !fase && t.tabla.length) for (const eq of idsTorneo) tablas[eq] = { filas: t.tabla.map(f => ({ equipo: f.equipo, pj: f.pj, pg: f.pg, pe: f.pe, pp: f.pp, gf: f.gf, gc: f.gc, pts: f.pts })), torneo: t.nombre, actualizada, fuente: 'larry' };
 }
 
 // Torneo que esta vez no se pudo leer (error, o vacío cuando antes tenía partidos): quedan sus partidos y su tabla
