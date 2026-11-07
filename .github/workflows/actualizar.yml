@@ -18,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'rapido (solo torneos con partidos ayer/hoy/mañana, 1-2 min), fixture (todos los torneos), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
+        description: 'vivo (sigue los partidos de Ciudad en juego, marcador cada minuto, hasta 5 h), rapido (solo torneos con partidos ayer/hoy/mañana, 1-2 min), fixture (todos los torneos), planteles (torneos + planillas, ~40 min), historico (una temporada anterior, ~2 h), historico-prueba (lee sin subir), registros (n° de registro AHBA, solo con repo privado) o explorar'
         type: choice
-        options: [rapido, avisos, fixture, planteles, registros, historico, historico-prueba, explorar]
+        options: [rapido, vivo, avisos, fixture, planteles, registros, historico, historico-prueba, explorar]
         default: rapido
       temporada:
         description: 'Temporada para historico (2022 a 2025)'
@@ -28,12 +28,13 @@ on:
         default: '2025'
 permissions:
   contents: write
+  actions: write
 # cada temporada histórica en su propio grupo: no se cancelan entre sí ni frenan las corridas programadas
-concurrency: ${{ startsWith(github.event.inputs.modo, 'historico') && format('historico-{0}', github.event.inputs.temporada) || 'actualizar' }}
+concurrency: ${{ startsWith(github.event.inputs.modo, 'historico') && format('historico-{0}', github.event.inputs.temporada) || (github.event.inputs.modo == 'vivo' && 'vivo' || 'actualizar') }}
 jobs:
   actualizar:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ startsWith(github.event.inputs.modo, 'historico') && 240 || 90 }}
+    timeout-minutes: ${{ startsWith(github.event.inputs.modo, 'historico') && 240 || (github.event.inputs.modo == 'vivo' && 320 || 90) }}
     env:
       CHROME_PATH: /usr/bin/google-chrome
       TZ: America/Argentina/Buenos_Aires
@@ -44,7 +45,11 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci --no-audit --no-fund
       # pdftotext para leer las planillas (goleadores de cada partido)
-      - if: env.MODO != 'avisos'
+      # en vivo: lee LarrySport cada minuto mientras juega Ciudad y escribe ccba_config/vivo
+      - name: En vivo
+        if: env.MODO == 'vivo'
+        run: node vivo.mjs
+      - if: env.MODO != 'avisos' && env.MODO != 'vivo'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
       - name: Fixture, resultados y tablas
         if: env.MODO == 'fixture' || env.MODO == 'rapido'
@@ -94,6 +99,12 @@ jobs:
       - name: Subir a Firestore
         if: env.MODO == 'fixture' || env.MODO == 'planteles' || env.MODO == 'rapido'
         run: node subir.mjs
+      # si hay un partido de Ciudad en juego o por empezar (40 min) y nadie lo sigue, arranca el modo vivo
+      - name: ¿Arrancar en vivo?
+        if: env.MODO == 'rapido'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node vivo.mjs --arrancar || true
       - name: Perfiles de jugadores (temporada actual + anteriores)
         if: env.MODO == 'fixture' || env.MODO == 'planteles'
         run: node perfiles.mjs
