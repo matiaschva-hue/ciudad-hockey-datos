@@ -1,6 +1,6 @@
 // Padrón del club (Excel con Apellido, Nombres, Fecha nacimiento, Categoria, Genero) → ccba_padron/datos.
 // Solo quienes figuran en las planillas de la temporada. Regla del club:
-//  - desde los 18 (o si cumple 18 en su próximo cumpleaños): fecha de nacimiento;
+//  - desde los 18 (o si cumple 18 en su próximo cumpleaños): día y mes del cumpleaños (el año nunca sale del Excel);
 //  - menores: solo la categoría, nunca la fecha.
 // El Excel no se guarda en ningún lado: se lee, se cruza y se sube solo lo publicable.
 // Uso: node padron.mjs <padron.xlsx> [--seco]
@@ -37,7 +37,7 @@ export function publicable(c, hoy = new Date()) {
   const [y, mo, d] = c.nacimiento.split('-').map(Number);
   const yaCumplio = hoy.getMonth() + 1 > mo || (hoy.getMonth() + 1 === mo && hoy.getDate() >= d);
   const cumple = hoy.getFullYear() - y + (yaCumplio ? 1 : 0); // años que cumple en su próximo cumpleaños
-  return cumple >= 18 ? { nacimiento: c.nacimiento } : { categoria: c.categoria || null };
+  return cumple >= 18 ? { cumple: c.nacimiento.slice(5) } : { categoria: c.categoria || null }; // MM-DD
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
@@ -70,7 +70,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
     if (!c) { cuenta.sin.push(k); continue; }
     if (c === 'ambiguo') { cuenta.ambiguos.push(k); continue; }
     personas[k] = publicable(c);
-    personas[k].nacimiento ? cuenta.mayores++ : cuenta.menores++;
+    personas[k].cumple ? cuenta.mayores++ : cuenta.menores++;
   }
   console.log(`${padron.length} en el padrón · ${vistos.size} en planillas → ${cuenta.mayores} con fecha (18+) · ${cuenta.menores} menores con categoría · ${cuenta.sin.length} sin cruzar · ${cuenta.ambiguos.length} ambiguos`);
   if (!SECO) { await setDoc(doc(db, 'ccba_padron', 'datos'), { json: JSON.stringify({ v: 1, actualizado: new Date().toISOString(), personas }), actualizado: new Date().toISOString() }); console.log('Subido ccba_padron/datos'); }

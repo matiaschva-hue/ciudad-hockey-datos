@@ -73,7 +73,7 @@ if (TODOS) try {
 } catch (e) { console.log('fotos:', e.message); }
 
 // cumpleaños (plantel superior, temporada actual o la anterior) — igual que el Studio
-const cumples = (f) => perfiles.filter((p) => p.nacimiento && p.nacimiento.slice(5) === f.slice(5)).filter((p) => { const ult = Math.max(...(p.temporadas || []).map((t) => t.anio)); return ult >= +f.slice(0, 4) - 1 && (p.temporadas || []).some((t) => t.anio === ult && ['primera', 'intermedia'].includes(t.div)); });
+const cumples = (f) => perfiles.filter((p) => (p.cumple || p.nacimiento?.slice(5)) === f.slice(5)).filter((p) => { const ult = Math.max(...(p.temporadas || []).map((t) => t.anio)); return ult >= +f.slice(0, 4) - 1 && (p.temporadas || []).some((t) => t.anio === ult && ['primera', 'intermedia'].includes(t.div)); });
 const juegan = (f) => P.filter((p) => p.fecha === f && p.gc == null && !p.suspendido);
 
 // 3) a la mañana: qué publicar hoy

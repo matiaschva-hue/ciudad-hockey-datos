@@ -64,11 +64,11 @@ export function armarPerfiles(actual, historicos, anioActual, padron = {}) {
     };
     // menores: se los muestra por categoría (sus temporadas), nunca con año de nacimiento.
     // Solo se publica la estimación cuando seguro tiene 18 o más (nació antes de anioActual - 18).
-    // padrón del club (padron.mjs): fecha de nacimiento desde los 18; menores, solo la categoría
+    // padrón del club (padron.mjs): desde los 18, día y mes del cumpleaños (sin año: con nombre completo es un dato sensible); menores, solo la categoría
     // por clave exacta (nombre de planilla al cargar el padrón) o, si la planilla cambió el nombre
     // (completado desde los goleadores, o la persona salió del plantel actual), por nombre
     const pad = p.claves.map((k) => padron[k]).find(Boolean) || porNombre(padron, p);
-    if (pad?.nacimiento) res.nacimiento = pad.nacimiento;
+    if (pad?.cumple || pad?.nacimiento) res.cumple = pad.cumple || pad.nacimiento.slice(5); // padrón viejo con la fecha entera: se publica igual sin el año
     else if (pad?.categoria) res.categoria = pad.categoria;
     else {
       const nac = estimarNacimiento(p.temporadas);
@@ -119,7 +119,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
   const padron = (await leer('ccba_padron', 'datos'))?.personas || {};
   const perfiles = armarPerfiles(actual, historicos, anioActual, padron);
   const json = JSON.stringify({ v: 1, actualizado: new Date().toISOString(), perfiles });
-  console.log(perfiles.length, 'perfiles ·', perfiles.filter((p) => p.anios.length > 1).length, 'con más de una temporada ·', perfiles.filter((p) => p.nacimiento).length, 'con fecha de nacimiento ·', Math.round(json.length / 1024), 'KB');
+  console.log(perfiles.length, 'perfiles ·', perfiles.filter((p) => p.anios.length > 1).length, 'con más de una temporada ·', perfiles.filter((p) => p.cumple).length, 'con cumpleaños ·', Math.round(json.length / 1024), 'KB');
   if (json.length > 1000000) throw new Error('El documento supera el máximo de Firestore (1 MB)');
   if (!SECO) { await setDoc(doc(db, 'ccba_perfiles', 'datos'), { json, actualizado: new Date().toISOString() }); console.log('Subido ccba_perfiles/datos'); }
   process.exit(0);
