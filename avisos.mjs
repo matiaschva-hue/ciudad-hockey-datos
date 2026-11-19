@@ -43,6 +43,8 @@ function apellido(nombre, rama) {
 const golesTxt = (p) => (p.goleadores || []).slice().sort((a, b) => b.goles - a.goles).map((j) => apellido(j.nombre, (E[p.equipo] || {}).rama) + (j.goles > 1 ? ` ×${j.goles}` : '')).join(', ');
 const partidoTxt = (p) => `${equipoTxt(p.equipo)}${p.hora ? ' ' + p.hora + ' h' : ''} vs ${p.rival} (${p.local === false ? 'V' : 'L'})`;
 
+// tocar el aviso abre Ciudad Studio con la placa de resultados de ese día y esa rama ya armada (clave de «Para publicar»)
+const armar = (ps) => { const k = [...new Set(ps.map((p) => 'res|' + p.fecha + '|' + (E[p.equipo] || {}).rama))]; return k.length === 1 ? './#/redes/armar/' + encodeURIComponent(k[0]) : './#/redes'; };
 // por ahora (pedido del CM) solo se avisa cuando termina un partido y cuando llega la planilla; AVISOS_TODOS=1 vuelve a mandar el resto
 const TODOS = !!process.env.AVISOS_TODOS;
 const avisos = []; // { clave, titulo, texto, url }
@@ -56,13 +58,13 @@ if (TODOS) try {
 
 // 2) resultados nuevos (con goleadores si la planilla ya está)
 const nuevosRes = P.filter((p) => p.fuente === 'larry' && p.gc != null && p.fecha >= dia(-2) && p.fecha <= hoy && !log[`res|${p.id}`]);
-if (nuevosRes.length > 4) avisos.push({ clave: nuevosRes.map((p) => `res|${p.id}`), titulo: `Resultados · ${nuevosRes.length} partidos`, texto: nuevosRes.slice(0, 6).map((p) => `${equipoTxt(p.equipo)}: ${p.gc}-${p.gr} ${p.rival}`).join(' · '), url: './#/redes' });
-else for (const p of nuevosRes) nuevo(golesTxt(p) ? [`res|${p.id}`, `gol|${p.id}`] : `res|${p.id}`, `Terminó: ${res(p)} ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Armá el posteo de resultado.`, `./#/p/${p.id}`);
+if (nuevosRes.length > 4) avisos.push({ clave: nuevosRes.map((p) => `res|${p.id}`), titulo: `Resultados · ${nuevosRes.length} partidos`, texto: nuevosRes.slice(0, 6).map((p) => `${equipoTxt(p.equipo)}: ${p.gc}-${p.gr} ${p.rival}`).join(' · '), url: armar(nuevosRes) });
+else for (const p of nuevosRes) nuevo(golesTxt(p) ? [`res|${p.id}`, `gol|${p.id}`] : `res|${p.id}`, `Terminó: ${res(p)} ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ciudad ${p.gc}-${p.gr} ${p.rival}${golesTxt(p) ? ` · Goles: ${golesTxt(p)}` : ''}. Tocá y la placa ya está armada.`, armar([p]));
 
 // goles: cuando LarrySport sube la planilla después del resultado, segundo aviso con los goleadores
 { const conGoles = P.filter((p) => p.fuente === 'larry' && p.gc != null && p.fecha >= dia(-3) && (p.goleadores || []).length && (log[`res|${p.id}`] || nuevosRes.includes(p)) && !log[`gol|${p.id}`] && !(nuevosRes.length <= 4 && nuevosRes.includes(p)));
-  if (conGoles.length > 4) avisos.push({ clave: conGoles.map((p) => `gol|${p.id}`), titulo: `Planillas · goles de ${conGoles.length} partidos`, texto: conGoles.slice(0, 4).map((p) => `${equipoTxt(p.equipo)}: ${golesTxt(p)}`).join(' · '), url: './#/redes' });
-  else for (const p of conGoles) nuevo(`gol|${p.id}`, `Goles · ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ya está la planilla: ${golesTxt(p)}. Armá el posteo de resultado con los goleadores.`, `./#/p/${p.id}`); }
+  if (conGoles.length > 4) avisos.push({ clave: conGoles.map((p) => `gol|${p.id}`), titulo: `Planillas · goles de ${conGoles.length} partidos`, texto: conGoles.slice(0, 4).map((p) => `${equipoTxt(p.equipo)}: ${golesTxt(p)}`).join(' · '), url: armar(conGoles) });
+  else for (const p of conGoles) nuevo(`gol|${p.id}`, `Goles · ${equipoTxt(p.equipo)} ${p.gc}-${p.gr}`, `Ya está la planilla: ${golesTxt(p)}. Tocá y la placa ya está armada con los goleadores.`, armar([p])); }
 
 // fotos nuevas de Hockey MUNI HD para revisar en Ciudad Studio (las baja la rutina de la compu del CM)
 if (TODOS) try {
