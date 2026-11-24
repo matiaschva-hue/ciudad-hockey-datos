@@ -1,0 +1,25 @@
+name: Robot sigue vivo
+# GitHub apaga las corridas programadas de un repo público si pasan 60 días sin cambios.
+# En el receso (diciembre a marzo) el robot no tiene datos nuevos y no guarda nada: este paso deja
+# una marca mínima (sigue-vivo.txt) el día 1 de cada mes para que el robot siga prendido cuando arranque la temporada.
+on:
+  schedule:
+    - cron: '23 15 1 * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  marca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dejar la marca del mes
+        env:
+          TZ: America/Argentina/Buenos_Aires
+        run: |
+          echo "El robot sigue prendido: $(date '+%Y-%m-%d %H:%M') (hora argentina)" > sigue-vivo.txt
+          git config user.name "ciudad-hockey-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add sigue-vivo.txt
+          git diff --cached --quiet || (git commit -m "Robot sigue vivo $(date +%F)" && git push)
