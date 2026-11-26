@@ -36,8 +36,8 @@ export function cruzar(rama, nombrePlanilla, padron) {
 export function publicable(c, hoy = new Date()) {
   const [y, mo, d] = c.nacimiento.split('-').map(Number);
   const yaCumplio = hoy.getMonth() + 1 > mo || (hoy.getMonth() + 1 === mo && hoy.getDate() >= d);
-  const cumple = hoy.getFullYear() - y + (yaCumplio ? 1 : 0); // años que cumple en su próximo cumpleaños
-  return cumple >= 18 ? { cumple: c.nacimiento.slice(5) } : { categoria: c.categoria || null }; // MM-DD
+  const edad = hoy.getFullYear() - y - (yaCumplio ? 0 : 1); // edad HOY (antes contaba la del próximo cumpleaños y publicaba a chicos de 17)
+  return edad >= 18 ? { cumple: c.nacimiento.slice(5) } : { categoria: c.categoria || null }; // MM-DD
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
