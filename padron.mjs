@@ -40,7 +40,7 @@ export function publicable(c, hoy = new Date()) {
   return edad >= 18 ? { cumple: c.nacimiento.slice(5) } : { categoria: c.categoria || null }; // MM-DD
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split(/[\\/]/).pop())) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(archivo);
   const ws = wb.worksheets[0];
