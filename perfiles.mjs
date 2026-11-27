@@ -106,7 +106,7 @@ export function estimarNacimiento(temporadas, edades = EDADES) {
   return desde === hasta ? { anio: desde } : { desde, hasta };
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split(/[\\/]/).pop())) {
   const SECO = process.argv.includes('--seco');
   const { initializeApp } = await import('firebase/app');
   const { getFirestore, doc, getDoc, setDoc } = await import('firebase/firestore');
